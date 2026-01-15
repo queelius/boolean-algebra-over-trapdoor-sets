@@ -4,11 +4,11 @@
 \section{Algorithms and Data Structures}
 \label{sec:algorithms}
 
-This section presents the core algorithms underlying CTS operations, including trapdoor generation, set operations, and advanced analytics.
+This section presents the core algorithms underlying HBOS operations, including trapdoor generation, set operations, and advanced analytics.
 
 \subsection{Trapdoor Generation}
 
-The fundamental operation in CTS is the generation of trapdoor values from sensitive data. Algorithm~\ref{alg:trapdoor} describes this process.
+The fundamental operation in HBOS is the generation of trapdoor values from sensitive data. Algorithm~\ref{alg:trapdoor} describes this process.
 
 \begin{algorithm}
 \caption{Trapdoor Generation}
@@ -106,7 +106,7 @@ The XOR operation satisfies:
 
 \subsection{Cardinality Estimation}
 
-CTS adapts HyperLogLog for cardinality estimation on trapdoor sets.
+HBOS adapts HyperLogLog for cardinality estimation on trapdoor sets.
 
 \begin{algorithm}
 \caption{HyperLogLog Cardinality Estimation}
@@ -140,7 +140,7 @@ CTS adapts HyperLogLog for cardinality estimation on trapdoor sets.
 
 \subsection{Similarity Computation}
 
-CTS supports various similarity metrics on encrypted sets.
+HBOS supports various similarity metrics on encrypted sets.
 
 \begin{algorithm}
 \caption{Jaccard Similarity}
@@ -209,7 +209,7 @@ LSH enables approximate nearest neighbor search on trapdoor sets.
 
 \subsection{Threshold Secret Sharing}
 
-CTS supports Shamir's secret sharing for distributed key management.
+HBOS supports Shamir's secret sharing for distributed key management.
 
 \begin{algorithm}
 \caption{$(k, n)$-Threshold Secret Sharing}
@@ -237,7 +237,7 @@ CTS supports Shamir's secret sharing for distributed key management.
 
 \subsection{Batch Operations}
 
-CTS provides optimized batch operations for improved throughput.
+HBOS provides optimized batch operations for improved throughput.
 
 \begin{algorithm}
 \caption{Batch Trapdoor Generation}
@@ -264,7 +264,7 @@ CTS provides optimized batch operations for improved throughput.
 
 \begin{table}[h]
 \centering
-\caption{Time Complexity of CTS Operations}
+\caption{Time Complexity of HBOS Operations}
 \begin{tabular}{lcc}
 \toprule
 Operation & Time & Space \\

@@ -34,6 +34,18 @@
 \newtheorem{lemma}[theorem]{Lemma}
 \newtheorem{definition}[theorem]{Definition}
 \newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{remark}[theorem]{Remark}
+
+% Unified notation (following Bernoulli types framework)
+\newcommand{\fpr}{\alpha}                   % False positive rate
+\newcommand{\fnr}{\beta}                    % False negative rate
+\newcommand{\obs}[1]{\tilde{#1}}            % Observed/approximate value
+\newcommand{\lat}[1]{#1}                    % Latent/true value
+\newcommand{\Bool}{\mathbb{B}}              % Boolean type
+\newcommand{\Bernoulli}[1]{\mathcal{B}\langle #1 \rangle}  % Bernoulli type
+\newcommand{\Oblivious}[1]{\mathcal{O}\langle #1 \rangle}  % Oblivious type
+\newcommand{\ConfMat}{Q}                    % Confusion matrix
+\newcommand{\ValidEnc}[1]{\mathsf{Valid}(#1)}  % Valid encodings
 
 \begin{document}
 
@@ -51,7 +63,7 @@ We present Hash-Based Oblivious Sets (HBOS), a practical framework for privacy-p
 
 Our framework provides: (1) a systematic approach to propagating error bounds through composed set operations, (2) efficient Boolean and symmetric difference operations on hash-transformed data with quantifiable false positive rates, and (3) practical implementations of privacy-preserving primitives including private set intersection and secure aggregation. We build upon established techniques from probabilistic data structures (Bloom filters, HyperLogLog) while adding cryptographic privacy through one-way hash transformations.
 
-Experimental evaluation demonstrates that HBOS operations complete in 0.4-2.1 microseconds for typical workloads, offering 1000-10000× speedup over homomorphic encryption approaches. The framework provides privacy guarantees bounded by the collision probability of the underlying hash function (e.g., $2^{-256}$ for SHA-256). We validate HBOS through implementations of private set intersection, secure deduplication, and federated learning aggregation, showing practical applicability where approximate results with explicit error bounds are acceptable.
+Experimental evaluation demonstrates that HBOS operations complete in 0.4-2.1 microseconds for typical workloads, offering 1000-10000× speedup over homomorphic encryption approaches. The framework provides false positive rates bounded by hash collision probability (e.g., $2^{-256}$ for SHA-256), with privacy guarantees that depend on input entropy and threat model assumptions. We validate HBOS through implementations of private set intersection, secure deduplication, and federated learning aggregation, showing practical applicability where approximate results with explicit error bounds are acceptable.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -74,7 +86,7 @@ Using HBOS, each hospital can:
 \begin{enumerate}
 \item Transform patient identifiers using a shared cryptographic hash function
 \item Perform set intersection directly on hash values
-\item Obtain results with explicit error bounds (e.g., false positive rate < $2^{-256}$)
+\item Obtain results with explicit error bounds (e.g., hash collision rate $< 2^{-256}$)
 \item Complete the entire operation in milliseconds rather than minutes
 \end{enumerate}
 
@@ -126,8 +138,18 @@ HBOS leverages these properties to create one-way transformations that preserve 
 Approximate data structures trade perfect accuracy for improved space or time complexity. The canonical example is the Bloom filter~\cite{bloom1970space}, which supports membership queries with false positives but no false negatives. HBOS builds upon these well-established techniques, adding cryptographic privacy through hash transformations while maintaining explicit error bounds.
 
 \begin{definition}[Approximate Boolean]
-An approximate Boolean value is a tuple $(v, \epsilon_p, \epsilon_n)$ where $v \in \{true, false\}$ is the estimated value, $\epsilon_p$ is the false positive rate, and $\epsilon_n$ is the false negative rate.
+An approximate Boolean value is a tuple $(v, \alpha, \beta)$ where $v \in \{\mathsf{true}, \mathsf{false}\}$ is the observed value, $\alpha$ is the false positive rate (probability of observing true when latent value is false), and $\beta$ is the false negative rate (probability of observing false when latent value is true).
 \end{definition}
+
+\begin{definition}[Confusion Matrix]
+The error behavior of an approximate Boolean is captured by its confusion matrix:
+$$\ConfMat = \begin{pmatrix} 1-\beta & \beta \\ \alpha & 1-\alpha \end{pmatrix}$$
+where entry $\ConfMat_{ij}$ gives the probability of observing $j$ given latent value $i$. Perfect observation corresponds to the identity matrix; complete information loss corresponds to a rank-1 matrix (identical rows).
+\end{definition}
+
+\begin{remark}[Latent vs. Observed Values]
+We distinguish \emph{latent} values (true mathematical objects, denoted $b, S, f$) from \emph{observed} values (computed approximations with error rates, denoted $\obs{b}, \obs{S}, \obs{f}$). This duality is fundamental: HBOS operates entirely on observed values while reasoning about their relationship to latent values through error bounds.
+\end{remark}
 
 \subsection{Threat Model}
 
@@ -155,11 +177,11 @@ HBOS is built around three core abstractions that compose to enable complex priv
 
 \subsubsection{Hash-Oblivious Values}
 
-A hash-oblivious value encapsulates the one-way transformation of sensitive data through cryptographic hashing. The key insight is that equality testing on hash values preserves the equality relation probabilistically while preventing recovery of original values. The false positive rate equals the collision probability of the hash function (e.g., $2^{-256}$ for SHA-256). Implementation details are provided in Appendix A.
+A hash-oblivious value encapsulates the one-way transformation of sensitive data through cryptographic hashing. The key insight is that equality testing on hash values preserves the equality relation probabilistically while preventing recovery of original values. For equality testing, the false positive rate (reporting equality when values differ) equals the hash collision probability (e.g., $2^{-256}$ for SHA-256). Note that this bounds \emph{collision errors}, not privacy---privacy depends on input entropy and resistance to dictionary attacks. Implementation details are provided in Appendix A.
 
 \subsubsection{Approximate Values}
 
-All operations in HBOS return approximate values with explicit error rates. Each approximate value maintains both the computed result and its associated false positive and false negative rates. This design makes uncertainty explicit and enables informed decision-making about accuracy-privacy trade-offs. The confidence in a result equals $1 - \epsilon_p - \epsilon_n$ where $\epsilon_p$ and $\epsilon_n$ are the false positive and negative rates respectively.
+All operations in HBOS return approximate values with explicit error rates. Each approximate value maintains both the computed result and its associated false positive and false negative rates. This design makes uncertainty explicit and enables informed decision-making about accuracy-privacy trade-offs. When $\alpha + \beta \leq 1$, the confidence in a result equals $1 - \alpha - \beta$ where $\alpha$ and $\beta$ are the false positive and negative rates respectively.
 
 \subsubsection{Set Operations}
 
@@ -186,16 +208,43 @@ HBOS provides two primary set implementations with different algebraic propertie
 A key aspect of HBOS is systematic error propagation through operations. For Boolean operations, we derive tight bounds:
 
 \begin{theorem}[Union Error Bound]
-For sets $A$ and $B$ with false positive rates $\epsilon_A$ and $\epsilon_B$:
-$$\epsilon_{A \cup B} \leq \epsilon_A + \epsilon_B - \epsilon_A \cdot \epsilon_B$$
+For sets $A$ and $B$ with false positive rates $\alpha_A, \alpha_B$ and false negative rates $\beta_A, \beta_B$:
+\begin{align}
+\alpha_{A \cup B} &\leq \alpha_A + \alpha_B - \alpha_A \cdot \alpha_B \\
+\beta_{A \cup B} &= \beta_A \cdot \beta_B
+\end{align}
 \end{theorem}
 
 \begin{theorem}[Intersection Error Bound]
-For sets $A$ and $B$ with false positive rates $\epsilon_A$ and $\epsilon_B$:
-$$\epsilon_{A \cap B} \leq \min(\epsilon_A, \epsilon_B)$$
+For sets $A$ and $B$ with false positive rates $\alpha_A, \alpha_B$ and false negative rates $\beta_A, \beta_B$:
+\begin{align}
+\alpha_{A \cap B} &= \alpha_A \cdot \alpha_B \\
+\beta_{A \cap B} &\leq \beta_A + \beta_B - \beta_A \cdot \beta_B
+\end{align}
 \end{theorem}
 
-These bounds enable applications to predict error accumulation through complex operations.
+\begin{proof}
+For intersection, a false positive requires \emph{both} sets to report false positives (independent events). A false negative occurs if \emph{either} set reports a false negative for an element truly in the intersection.
+\end{proof}
+
+These bounds enable applications to predict error accumulation through complex operations. Note that intersection \emph{reduces} false positive rates (multiplicative) while union \emph{increases} them (sub-additive).
+
+\begin{theorem}[Boolean Error Composition]
+For independent approximate Booleans $\obs{b}_1, \obs{b}_2$ with error rates $(\alpha_1, \beta_1)$ and $(\alpha_2, \beta_2)$:
+\begin{align}
+\neg\obs{b}: &\quad (\beta, \alpha) \text{ (rates swap)} \\
+\obs{b}_1 \land \obs{b}_2: &\quad (\alpha_1 \alpha_2,\; \beta_1 + \beta_2 - \beta_1\beta_2) \\
+\obs{b}_1 \lor \obs{b}_2: &\quad (\alpha_1 + \alpha_2 - \alpha_1\alpha_2,\; \beta_1\beta_2)
+\end{align}
+\end{theorem}
+
+\begin{proof}
+Negation swaps the meaning of false positive and false negative. For conjunction, a false positive requires both operands to err (independent), while a false negative occurs if either errs. Disjunction is dual by De Morgan's laws.
+\end{proof}
+
+\begin{corollary}[Composition Accumulation]
+For $n$ operations each with symmetric error rate $\varepsilon$, the accumulated error is bounded by $n\varepsilon - O(\varepsilon^2)$ for small $\varepsilon$.
+\end{corollary}
 
 \subsection{Architecture}
 
@@ -268,6 +317,37 @@ For hash-transformed sets $H(A)$ and $H(B)$, operations preserve set relationshi
 
 \textbf{Important Note}: These are \emph{not} true homomorphic properties as operations are approximate with collision-bounded error rates. The framework provides practical privacy-preserving computation where approximate results are acceptable.
 
+\subsection{Unified Hash Construction}
+
+All HBOS operations derive from a general hash-based construction that unifies probabilistic data structures with cryptographic privacy:
+
+\begin{definition}[Hash-Based Bernoulli Type]
+A hash-based Bernoulli type consists of:
+\begin{enumerate}
+\item A keyed hash function $h: \{0,1\}^* \times \{0,1\}^s \rightarrow \{0,1\}^m$
+\item For each output value $y$, a set of valid encodings $\ValidEnc{y} \subseteq \{0,1\}^m$
+\item A seed $s$ such that for all inputs $x$: $h(\mathsf{enc}(x), s) \in \ValidEnc{f(x)}$
+\end{enumerate}
+\end{definition}
+
+The false positive rate emerges from encoding set sizes: $\alpha = |\ValidEnc{\mathsf{true}}|/2^m$. This unified view reveals that Bloom filters, trapdoor functions, and approximate maps are all instances of the same construction with different encoding strategies.
+
+\subsection{Privacy-Space Trade-off}
+
+The same hash construction achieves fundamentally different goals by varying encoding sizes:
+
+\textbf{Space-Optimal Encoding}: $|\ValidEnc{y}| \propto \text{freq}(y)$ (proportional to frequency). Minimizes expected encoding size but reveals frequency information. Used in compression and space-efficient data structures.
+
+\textbf{Privacy-Optimal Encoding}: $|\ValidEnc{y}| \propto 1/\text{freq}(y)$ (inverse frequency). Achieves uniform output distribution, hiding frequency patterns. This is the \emph{1/p(y) principle}---the key insight connecting approximation to privacy.
+
+\begin{theorem}[Uniformity from Inverse-Frequency]
+With encoding sizes $|\ValidEnc{y}| = c/\text{freq}(y)$ for constant $c$:
+$$P[\text{Output} = y] = \frac{|\ValidEnc{y}|}{2^m} = \text{constant}$$
+achieving uniform output distribution without explicit randomization.
+\end{theorem}
+
+HBOS uses uniform-sized encodings (a middle ground), providing practical privacy at constant space cost per element.
+
 \subsection{Cardinality Estimation}
 
 HBOS incorporates the well-established HyperLogLog algorithm~\cite{flajolet2007hyperloglog} for cardinality estimation on hash-transformed sets. We apply HyperLogLog without modification, leveraging its proven accuracy guarantees:
@@ -304,7 +384,7 @@ The library provides flexible key management supporting key derivation for diffe
 
 \subsection{Experimental Setup}
 
-We evaluate CTS on:
+We evaluate HBOS on:
 \begin{itemize}
 \item Intel Core i9-12900K (16 cores, 24 threads)
 \item 64GB DDR5 RAM
@@ -333,7 +413,7 @@ Jaccard similarity & 2.1 & 0.2 \\
 \end{tabular}
 \end{table}
 
-CTS achieves microsecond-scale performance for common operations, making it suitable for real-time applications.
+HBOS achieves microsecond-scale performance for common operations, making it suitable for real-time applications.
 
 \subsection{Scalability Analysis}
 
@@ -365,32 +445,51 @@ We validate security properties through:
 
 \textbf{Timing Analysis}: Operations exhibit constant-time behavior preventing timing attacks.
 
+\subsection{Limitations and Attack Vectors}
+
+HBOS provides practical privacy but has important limitations that users must understand:
+
+\textbf{Dictionary Attacks}: For low-entropy input domains (e.g., phone numbers, SSNs, email addresses), an adversary with knowledge of the domain can precompute hashes for all possible values and match against observed trapdoors. Privacy degrades to $O(1/|D|)$ where $|D|$ is the domain size. \emph{Mitigation}: Use high-entropy inputs, apply key stretching (e.g., Argon2), or combine with additional randomization.
+
+\textbf{Frequency Leakage}: Query frequencies are preserved through hash transformations. An adversary observing repeated queries learns which trapdoors correspond to frequently-accessed values. \emph{Mitigation}: Add dummy queries, use query batching, or apply differential privacy noise.
+
+\textbf{Correlation Leakage}: Deterministic hashing reveals equality patterns---repeated queries on the same value produce identical hashes. This leaks that certain queries target the same underlying value. \emph{Mitigation}: Periodic key rotation, though this complicates system design.
+
+\textbf{Quantum Vulnerability}: Grover's algorithm reduces effective hash security from $n$ bits to $n/2$ bits. For quantum resistance, use 512-bit hashes to maintain 256-bit security.
+
+\begin{remark}[When HBOS is Appropriate]
+HBOS is suitable when: (1) input domains have high entropy, (2) dictionary attacks are infeasible, (3) frequency patterns are acceptable leakage, or (4) approximate plausible deniability suffices. For stronger guarantees, consider FHE or MPC despite their performance costs.
+\end{remark}
+
 \subsection{Comparison with Alternatives}
 
 \begin{table}[h]
 \centering
 \caption{Comparison with Related Systems}
 \label{tab:comparison}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-System & Privacy & Performance & Accuracy \\
+System & Privacy Model & Dictionary Resistant & Performance & Accuracy \\
 \midrule
-HBOS (This work) & High & Microseconds & Approximate \\
-FHE & Perfect & Seconds & Exact \\
-MPC & High & Milliseconds & Exact \\
-Bloom Filters & None & Microseconds & Approximate \\
+HBOS & Preimage & No$^*$ & $\mu$s & Approximate \\
+FHE & Semantic & Yes & s & Exact \\
+MPC & Simulation & Yes & ms & Exact \\
+Bloom Filters & None & N/A & $\mu$s & Approximate \\
 \bottomrule
 \end{tabular}
 \end{table}
+\vspace{-0.5em}
+{\footnotesize $^*$Vulnerable when input domain has low entropy}
+\vspace{0.5em}
 
-HBOS occupies a unique position offering cryptographic privacy with practical performance by accepting controlled approximation.
+HBOS occupies a practical niche: it provides preimage-based privacy with microsecond performance, suitable for high-entropy domains where dictionary attacks are infeasible.
 
 \section{Applications}
 \label{sec:applications}
 
 \subsection{Private Set Intersection}
 
-HBOS enables efficient PSI without revealing non-matching elements. The intersection operation on hash-transformed sets achieves $O(n)$ complexity compared to $O(n^2)$ for naive approaches. The false positive rate is bounded by the hash collision probability, providing strong privacy guarantees for practical applications.
+HBOS enables efficient PSI without revealing non-matching elements. Using hash-table based intersection, HBOS achieves $O(n)$ complexity with $O(n)$ space, matching the best non-private approaches. The key advantage is that operations occur entirely in the hash domain---the false positive rate for membership is bounded by hash collision probability, while the underlying values remain computationally hidden.
 
 \subsection{Secure Deduplication}
 

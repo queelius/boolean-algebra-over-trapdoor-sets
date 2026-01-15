@@ -6,9 +6,7 @@
 \providecommand{\mainx}{..}
 
 \begin{document}
-\section{Cipher Boolean algebras}
-TODO: mention the order of the model. xor-set is a higher-order model on equality. No easy solution there.
-The other union set one is a second-order $\pm$ model i believe.
+\section{Cipher Boolean Algebras}
 
 \emph{Cipher} value types may come in many shapes.
 They may be parametric types, e.g., $\OT{T}$ is a cipher type of plain type $T$ and they may provide differing levels of \emph{confidentiality}, whether as a simple substitution cipher, homophonic cipher, or homomorphic encryption.
@@ -16,14 +14,9 @@ They may be parametric types, e.g., $\OT{T}$ is a cipher type of plain type $T$ 
 In what follows, we consider several ciphers sets, one in which is a Boolean algebra that provides for all set relations like \emph{membership}, \emph{identity}, and \emph{subset}, and the other is a group over symmetric difference and intersection but only offers the \emph{identity} relation (or only one its representations in a, say, homophonic encryption system).
 Both, however, model their relations as predicate functions which return \emph{plaintext} Booleans rather than cipher variations, i.e., $\BitSet$ as opposed to the more confidential $\OT{\BitSet}$.
 
-NOTE: If using something like homophonic encryption, then identity is no longer maintained. A cipher set $\OT{\Set{A}}$ sent in one round may be different is \emph{incomparable} to a cipher set $\OT{\Set{A}}$ sent in another round. 
-
-NOTE 2: When, say, including bigrams (for whatever reason), if we want to be able to construct a cipher bigram from two cipher elements on the untrusted system, then in the cipher map or set on the untrusted system, all of these combinations must be included separately (unless rate-distorted, in which case errors). Since this may limit its value, we can not support these operations and just go 
-...
-and we wish  with these cipher sets, then identity is no longer provided for by the information in the sets alone. See \emph{approximate maps} or \emph{approximate sets}.
-
-
-
+\begin{remark}[Homophonic Encryption]
+If using homophonic encryption, identity is no longer maintained deterministically. A cipher set $\OT{\Set{A}}$ sent in one round may be \emph{incomparable} to the same set sent in another round.
+\end{remark}
 
 Suppose we have the Boolean algebra
 \begin{equation}
@@ -79,7 +72,7 @@ where
 \end{equation}
 \end{theorem}
 \begin{proof}
-Proof here. See paper sheets that are star-numbered.
+For membership testing, a false positive occurs when a non-member's hash bits are all contained within the set's bit vector. After inserting $n$ elements, each bit position has probability $1 - 2^{-n}$ of being set (assuming uniform hashing). A query element maps to $m$ bit positions, all of which must be set for a false positive. By independence, $\fprate = (1 - 2^{-n})^m \approx \alpha^m(n)$.
 \end{proof}
 
 
@@ -90,7 +83,7 @@ The \emph{bit-rate}, the bits per element, is given by the following corollary.
 \end{equation}
 \end{corollary}
 \begin{proof}
-Proof here. See paper sheets that are star-numbered.
+From the false positive rate theorem, $\fprate = \alpha^m(n)$, so $m = \log_\alpha(\fprate) = \log_2(\fprate)/\log_2(\alpha)$. The bit-rate is $m/n$, yielding $\Fun{b} = \log_2(\fprate)/(n \cdot \log_2(\alpha)) \approx \log_2(\fprate)/(n \cdot \alpha(n))$ for the approximation $\log_2(\alpha) \approx \alpha$ when $\alpha$ is close to 1.
 \end{proof}
 
 The \emph{partial derivative} of $\Fun{b}$ with respect to $\fprate$ is given by
@@ -111,22 +104,19 @@ It is only practical for small values of $n$, where $n$ is the number of element
 
 The \emph{identity} relation has false positives given by the following.
 \begin{theorem}
-	False positives on the \emph{equality} predicate occurs with probability
+	False positives on the \emph{equality} predicate occur with probability
 	\begin{equation}
-	\fprate(m) = ?\,,
+	\fprate(m) = 2^{-m}\,,
 	\end{equation}
 	where $m$ is the bit length of the hash function in the Boolean cipher algebra.
 \end{theorem}
 \begin{proof}
-	Two sets are said to be identical if they map to the same bit string, and thus, as before, \emph{false positives} are possible,
-	\begin{equation}
-	\Prob{\Fun{G} \Set{X} = \Fun{G} \Set{Y} \Given \Set{X} \neq \Set{Y}}
-	\end{equation}
-	which occurs with probability $?$...
+	Two sets are said to be identical if they map to the same bit string. A false positive occurs when $\Fun{G}(\Set{X}) = \Fun{G}(\Set{Y})$ but $\Set{X} \neq \Set{Y}$. Under the random oracle assumption, the probability that two distinct inputs produce the same $m$-bit output is $2^{-m}$ (the birthday bound gives a higher collision probability for many comparisons, but for a single pair comparison, it is $2^{-m}$).
 \end{proof}
 
-
-TODO: figured out membership fpr, now figure out subset fpr, identity fpr also.
+\begin{remark}[Subset Testing]
+For subset testing $\Set{A} \subseteq \Set{B}$, a false positive occurs when all bits of $\Fun{G}(\Set{A})$ are contained in $\Fun{G}(\Set{B})$ despite $\Set{A} \not\subseteq \Set{B}$. The false positive rate depends on the relative sizes and overlap of the sets.
+\end{remark}
 
 
 \end{document}
