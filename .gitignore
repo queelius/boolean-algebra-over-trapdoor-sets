@@ -4,7 +4,16 @@
 # tracked
 !/.gitignore
 
-/build* 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+/build*
 main.pdf
 *.log
 *.out
