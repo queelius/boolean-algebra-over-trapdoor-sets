@@ -49,7 +49,7 @@
 
 \begin{document}
 
-\title{Hash-Based Oblivious Sets: A Practical Framework for\\Privacy-Preserving Set Operations with Probabilistic Guarantees}
+\title{Boolean Algebra over Trapdoor Sets: A Practical Framework for\\Privacy-Preserving Set Operations with Probabilistic Guarantees}
 
 \author{\IEEEauthorblockN{Alexander Towell}
 \IEEEauthorblockA{Department of Computer Science\\
@@ -61,7 +61,9 @@ Email: atowell@siue.edu}}
 \begin{abstract}
 We present Hash-Based Oblivious Sets (HBOS), a practical framework for privacy-preserving set operations that combines cryptographic hash functions with probabilistic data structures. Unlike traditional approaches using fully homomorphic encryption or secure multi-party computation, HBOS achieves microsecond-scale performance by embracing approximate operations with explicitly managed error rates.
 
-Our framework provides: (1) a systematic approach to propagating error bounds through composed set operations, (2) efficient Boolean and symmetric difference operations on hash-transformed data with quantifiable false positive rates, and (3) practical implementations of privacy-preserving primitives including private set intersection and secure aggregation. We build upon established techniques from probabilistic data structures (Bloom filters, HyperLogLog) while adding cryptographic privacy through one-way hash transformations.
+HBOS provides \emph{oblivious representation} through one-way hash transformations---the underlying data cannot be recovered from hash values. Operations return \emph{Bernoulli Booleans}: plaintext approximate results with explicit error rates (false positive rate $\alpha$, false negative rate $\beta$). This layered model trades full obliviousness of query results for practical efficiency, making it suitable for applications where query patterns are not sensitive or results are shared.
+
+Our framework provides: (1) a systematic approach to propagating error bounds through composed set operations using Bernoulli type composition rules, (2) efficient Boolean and symmetric difference operations on hash-transformed data with quantifiable false positive rates, and (3) practical implementations of privacy-preserving primitives including private set intersection and secure aggregation. We build upon established techniques from probabilistic data structures (Bloom filters, HyperLogLog) while adding cryptographic privacy through one-way hash transformations.
 
 Experimental evaluation demonstrates that HBOS operations complete in 0.4-2.1 microseconds for typical workloads, offering 1000-10000× speedup over homomorphic encryption approaches. The framework provides false positive rates bounded by hash collision probability (e.g., $2^{-256}$ for SHA-256), with privacy guarantees that depend on input entropy and threat model assumptions. We validate HBOS through implementations of private set intersection, secure deduplication, and federated learning aggregation, showing practical applicability where approximate results with explicit error bounds are acceptable.
 \end{abstract}
@@ -77,6 +79,8 @@ The proliferation of cloud computing and data analytics has created an urgent ne
 We present Hash-Based Oblivious Sets (HBOS), a practical framework that achieves efficient privacy-preserving set operations by combining cryptographic hash functions with probabilistic data structures. Our approach differs from existing solutions by explicitly embracing approximation, making error rates transparent throughout the computational pipeline. This design choice enables HBOS to achieve microsecond-scale performance while providing privacy bounded by hash collision probabilities.
 
 The core insight underlying HBOS is that many real-world applications can tolerate controlled error rates in exchange for efficiency and privacy. By using cryptographic hash functions as one-way transformations, we map sensitive data into a hash domain where equality testing is preserved probabilistically while the original values remain computationally hidden. All subsequent operations work exclusively on these hash values, never requiring access to the plaintext. This approach builds upon well-established techniques from probabilistic data structures while adding cryptographic privacy guarantees.
+
+HBOS embodies a \emph{layered privacy model}: the hash representation is \emph{oblivious} (underlying values cannot be recovered), while operations return \emph{Bernoulli Booleans}---plaintext approximate results with explicit error rates. This separation is key to understanding HBOS's guarantees: we hide what the data \emph{is}, but not the pattern of query \emph{results}. The framework draws on Bernoulli type theory~\cite{bernoulli-types}, which provides systematic error propagation rules for composed approximate operations.
 
 \subsection{Motivating Example}
 
@@ -110,7 +114,7 @@ This paper makes the following contributions:
 
 \subsection{Paper Organization}
 
-The remainder of this paper is organized as follows. Section~\ref{sec:background} provides background on cryptographic hash functions and threat model. Section~\ref{sec:design} presents the HBOS framework design and core abstractions. Section~\ref{sec:theory} develops the mathematical foundations and security analysis. Section~\ref{sec:implementation} describes our implementation and optimization techniques. Section~\ref{sec:evaluation} evaluates performance and security properties. Section~\ref{sec:applications} explores applications across multiple domains. Section~\ref{sec:related} discusses related work. Section~\ref{sec:conclusion} concludes.
+The remainder of this paper is organized as follows. Section~\ref{sec:background} provides background on cryptographic hash functions, Bernoulli Booleans, and threat model. Section~\ref{sec:design} presents the HBOS framework design, including the layered privacy model distinguishing oblivious representation from Bernoulli query results. Section~\ref{sec:theory} develops the mathematical foundations and security analysis. Section~\ref{sec:implementation} describes our implementation and optimization techniques. Section~\ref{sec:evaluation} evaluates performance and security properties. Section~\ref{sec:applications} explores applications across multiple domains. Section~\ref{sec:related} discusses related work. Section~\ref{sec:conclusion} concludes.
 
 \section{Background and Threat Model}
 \label{sec:background}
@@ -141,10 +145,27 @@ Approximate data structures trade perfect accuracy for improved space or time co
 An approximate Boolean value is a tuple $(v, \alpha, \beta)$ where $v \in \{\mathsf{true}, \mathsf{false}\}$ is the observed value, $\alpha$ is the false positive rate (probability of observing true when latent value is false), and $\beta$ is the false negative rate (probability of observing false when latent value is true).
 \end{definition}
 
+\begin{definition}[Bernoulli Boolean]
+\label{def:bernoulli-boolean}
+A \emph{Bernoulli Boolean} $\Bernoulli{\Bool}$ is an observed boolean $\obs{b}$ with error rates $(\fpr, \fnr)$ where:
+\begin{itemize}
+\item $\fpr = \mathbb{P}[\obs{b} = \mathsf{true} \mid b = \mathsf{false}]$ (false positive rate)
+\item $\fnr = \mathbb{P}[\obs{b} = \mathsf{false} \mid b = \mathsf{true}]$ (false negative rate)
+\end{itemize}
+We distinguish \emph{second-order} Bernoulli Booleans where $\fpr \neq \fnr$ (asymmetric errors, as in Bloom filters and hash-based membership) from \emph{first-order} where $\fpr = \fnr$ (symmetric errors). HBOS produces second-order Bernoulli Booleans with $\fpr = 2^{-n}$ (hash collision) and $\fnr = 0$ (no false negatives).
+\end{definition}
+
 \begin{definition}[Confusion Matrix]
-The error behavior of an approximate Boolean is captured by its confusion matrix:
-$$\ConfMat = \begin{pmatrix} 1-\beta & \beta \\ \alpha & 1-\alpha \end{pmatrix}$$
-where entry $\ConfMat_{ij}$ gives the probability of observing $j$ given latent value $i$. Perfect observation corresponds to the identity matrix; complete information loss corresponds to a rank-1 matrix (identical rows).
+\label{def:confusion-matrix}
+The error behavior of a Bernoulli Boolean is fully characterized by its \emph{confusion matrix}:
+$$\ConfMat = \begin{pmatrix} 1-\fpr & \fpr \\ \fnr & 1-\fnr \end{pmatrix}$$
+where $\ConfMat_{ij} = \mathbb{P}[\obs{b} = j \mid b = i]$ gives the probability of observing $j$ given latent value $i$. Key properties:
+\begin{itemize}
+\item \textbf{Identity matrix} ($\fpr = \fnr = 0$): perfect observation, no privacy
+\item \textbf{Rank-1 matrix} ($\fpr + \fnr = 1$): complete information loss, optimal privacy
+\item \textbf{Rank-2 matrix} ($\fpr + \fnr < 1$): information preserved, privacy/utility trade-off
+\end{itemize}
+For HBOS with $\fpr = 2^{-n}$ and $\fnr = 0$, the confusion matrix is nearly identity---high utility but query results are observable (the ``concession'' discussed in Section~\ref{sec:layered-privacy}).
 \end{definition}
 
 \begin{remark}[Latent vs. Observed Values]
@@ -246,6 +267,44 @@ Negation swaps the meaning of false positive and false negative. For conjunction
 For $n$ operations each with symmetric error rate $\varepsilon$, the accumulated error is bounded by $n\varepsilon - O(\varepsilon^2)$ for small $\varepsilon$.
 \end{corollary}
 
+\subsection{Layered Privacy: Oblivious Representation, Bernoulli Results}
+\label{sec:layered-privacy}
+
+HBOS exhibits a layered privacy model combining two distinct mechanisms: \emph{oblivious representation} through one-way hash transformations, and \emph{Bernoulli query results} that are plaintext but approximate. Understanding this layered structure is essential for correctly reasoning about HBOS's privacy guarantees.
+
+\subsubsection{Oblivious Representation Layer}
+
+The hash transformation $T_k(v) = H(k \| v)$ creates an \emph{oblivious representation}: inspecting a hash value reveals nothing about the underlying data beyond what can be learned through defined operations. This provides:
+\begin{itemize}
+\item \textbf{Preimage resistance}: Cannot recover $v$ from $T_k(v)$ without exhaustive search
+\item \textbf{Key-dependent hiding}: Without knowledge of $k$, an adversary cannot verify membership guesses
+\item \textbf{Representation uniformity}: Hash values appear uniformly random, hiding structural properties of inputs
+\end{itemize}
+The representation layer is what makes HBOS ``oblivious''---the hash values themselves reveal nothing about the original data.
+
+\subsubsection{Bernoulli Query Layer}
+
+Operations on hash values return \emph{Bernoulli Booleans}---plaintext approximate results with explicit error rates:
+\begin{itemize}
+\item \textbf{Membership queries}: $x \in S$ returns an observable true/false with rates $(\fpr, 0)$ where $\fpr = 2^{-n}$
+\item \textbf{Set operations}: Union and intersection return sets with composed error rates per Theorems 1--3
+\item \textbf{Results are not hidden}: An observer sees query outcomes as plaintext booleans
+\end{itemize}
+
+\begin{remark}[The Concession]
+\label{rem:concession}
+While representation is oblivious, \emph{query results are observable}. A fully oblivious system would hide even the pattern of true/false results (as in oblivious RAM~\cite{oset}). HBOS trades this stronger property for practical efficiency---suitable when query results are already shared (e.g., private set intersection reveals intersection members) or when the pattern of results is not sensitive.
+\end{remark}
+
+\subsubsection{Hash Values as Bernoulli Set Carriers}
+
+The \texttt{HashValue} type with bitwise operations ($\land$, $\lor$, $\oplus$, $\neg$) forms the carrier for Bernoulli set operations. Each hash equality test is a second-order Bernoulli Boolean:
+\begin{align}
+\fpr &= 2^{-n} \quad \text{(hash collision probability for $n$-bit hash)} \\
+\fnr &= 0 \quad \text{(no false negatives for hash equality)}
+\end{align}
+This asymmetry ($\fpr > 0$, $\fnr = 0$) is characteristic of hash-based data structures and propagates through composed operations according to the error composition rules.
+
 \subsection{Architecture}
 
 HBOS follows a layered architecture as shown in Figure~\ref{fig:architecture}:
@@ -278,6 +337,64 @@ This design enables modularity and allows applications to work at the appropriat
 
 \section{Mathematical Foundations}
 \label{sec:theory}
+
+\subsection{Boolean Algebra Framework}
+\label{sec:boolean-algebra}
+
+HBOS is grounded in a homomorphism between two Boolean algebras: the algebra of sets over arbitrary bit strings, and the algebra of fixed-size bit vectors. This section formalizes this relationship.
+
+\begin{definition}[Set Boolean Algebra]
+The \emph{set Boolean algebra} is the structure
+$$A := \left(\mathcal{P}(\{0,1\}^*), \cup, \cap, \neg, \emptyset, \{0,1\}^*\right)$$
+where $\mathcal{P}(\{0,1\}^*)$ is the power set of all finite bit strings, with union, intersection, complement, empty set, and universal set.
+\end{definition}
+
+\begin{definition}[Bit Vector Boolean Algebra]
+The \emph{bit vector Boolean algebra} is the structure
+$$B := \left(\{0,1\}^m, \lor, \land, \neg, 0^m, 1^m\right)$$
+where $\{0,1\}^m$ consists of $m$-bit vectors with bitwise OR, AND, negation, zero vector, and all-ones vector.
+\end{definition}
+
+\begin{definition}[Trapdoor Homomorphism]
+The homomorphism $F : A \to B$ is defined as:
+$$F(\beta) := \begin{cases}
+    H(\beta)       & \beta \in \{0,1\}^* \\
+    \lor           & \beta = \cup \\
+    \land          & \beta = \cap \\
+    \neg           & \beta = \neg_A \\
+    0^m            & \beta = \emptyset \\
+    1^m            & \beta = \{0,1\}^*
+\end{cases}$$
+where $H: \{0,1\}^* \to \{0,1\}^m$ is a cryptographic hash function. For a set $S = \{x_1, \ldots, x_k\}$, this extends to $F(S) = H(x_1) \lor H(x_2) \lor \cdots \lor H(x_k)$.
+\end{definition}
+
+\begin{theorem}[One-Wayness of Trapdoor Homomorphism]
+\label{thm:one-way}
+The homomorphism $F$ is one-way for two independent reasons:
+\begin{enumerate}
+\item \textbf{Non-injectivity}: $F$ is not injective. Since $\{0,1\}^*$ is countably infinite and $\{0,1\}^m$ has only $2^m$ elements, by the pigeonhole principle, countably infinitely many inputs map to each output.
+\item \textbf{Preimage resistance}: The hash function $H$ is a cryptographic hash that resists preimage attacks. Given $y \in \{0,1\}^m$, finding any $x$ such that $H(x) = y$ requires $O(2^m)$ operations, while computing $H(x)$ from $x$ is efficient.
+\end{enumerate}
+\end{theorem}
+
+These two properties combine to provide computational one-wayness: even though the mapping is many-to-one, finding any preimage remains computationally hard.
+
+\begin{corollary}[Bit-Rate Formula]
+\label{cor:bit-rate}
+The \emph{bit-rate} (bits per element) required to achieve a target false positive rate $\varepsilon$ for a set of $n$ elements is:
+$$b(n, \varepsilon) = \frac{\log_2 \varepsilon}{n \cdot \alpha(n)}$$
+where $\alpha(n) = 1 - 2^{-(n+1)}$ is the per-bit occupancy probability after $n$ insertions.
+\end{corollary}
+
+\begin{proof}
+From the FPR formula $\varepsilon = \alpha(n)^m$, solving for $m$ gives $m = \log_2(\varepsilon) / \log_2(\alpha(n))$. For $\alpha(n)$ close to 1, $\log_2(\alpha(n)) \approx \alpha(n) - 1 \approx -\alpha(n)$ for small deviations. Thus the bit-rate $m/n \approx \log_2(\varepsilon)/(n \cdot \alpha(n))$.
+\end{proof}
+
+\begin{remark}[Absolute Efficiency]
+The \emph{absolute efficiency} of the bit-vector representation is:
+$$\mathsf{Eff}(n) = -n \log_2 \alpha(n)$$
+which is exponential with respect to $n$. As $n \to \infty$, efficiency approaches 0, making this construction practical only for small sets (typically $n \leq 20$). For larger sets, the two-level hashing scheme of Section~\ref{sec:two-level} is required.
+\end{remark}
 
 \subsection{Security Analysis}
 
@@ -317,36 +434,144 @@ For hash-transformed sets $H(A)$ and $H(B)$, operations preserve set relationshi
 
 \textbf{Important Note}: These are \emph{not} true homomorphic properties as operations are approximate with collision-bounded error rates. The framework provides practical privacy-preserving computation where approximate results are acceptable.
 
-\subsection{Unified Hash Construction}
+\subsection{Size-Dependent False Positive Analysis}
+\label{sec:fpr-analysis}
 
-All HBOS operations derive from a general hash-based construction that unifies probabilistic data structures with cryptographic privacy:
+The simple bound $\fpr = 2^{-n}$ assumes single-element queries. For sets of size $k$, the FPR depends on set density. We derive precise bounds from the bit-string representation.
+
+\begin{theorem}[Membership False Positive Rate]
+\label{thm:membership-fpr}
+For a set $S$ of size $k$ represented as $n$-bit strings, the false positive rate for membership queries is:
+$$\varepsilon_{\in}(k,n) = \left(1 - 2^{-(k+1)}\right)^n$$
+For small $k$, this approximates to $\varepsilon_{\in} \approx e^{-n \cdot 2^{-(k+1)}}$.
+\end{theorem}
+
+\begin{proof}
+After $k$ insertions, each bit position is set to 1 with probability $1 - 2^{-k}$. For a random element $x \notin S$ to test positive, every bit position where $h(x)$ is 1 must also be 1 in $F(S)$. Since $h(x)$ has each bit set with probability $\frac{1}{2}$, the probability that bit $j$ does not refute membership is:
+$$\Pr[\neg(h(x)_j = 1 \land F(S)_j = 0)] = 1 - \frac{1}{2} \cdot 2^{-k} = 1 - 2^{-(k+1)}$$
+The result follows from independence across $n$ bit positions.
+\end{proof}
+
+\begin{theorem}[Subset False Positive Rate]
+\label{thm:subset-fpr}
+For sets $S_1, S_2$ of sizes $k_1, k_2$, the false positive rate for the subset test $S_1 \subseteq S_2$ is:
+$$\varepsilon_{\subseteq}(k_1, k_2, n) = \left(1 - (1 - 2^{-k_1}) \cdot 2^{-k_2}\right)^n$$
+\end{theorem}
+
+\begin{proof}
+For $S_1 \subseteq S_2$ to test positive falsely, every bit set in $F(S_1)$ must be set in $F(S_2)$. Bit $j$ is set in $F(S_1)$ with probability $1 - 2^{-k_1}$ and unset in $F(S_2)$ with probability $2^{-k_2}$. The probability that bit $j$ does not refute the subset relation is $1 - (1-2^{-k_1}) \cdot 2^{-k_2}$, and the result follows from independence.
+\end{proof}
+
+\begin{theorem}[Space Complexity]
+\label{thm:space-complexity}
+To maintain a fixed false positive rate $\varepsilon$ for membership queries on a set of size $k$, the hash size must satisfy:
+$$n = \mathcal{O}(2^k)$$
+This exponential growth limits the single-level scheme to small sets (typically $k \leq 20$).
+\end{theorem}
+
+\begin{proof}
+From Theorem~\ref{thm:membership-fpr}, we have $\varepsilon = (1 - 2^{-(k+1)})^n$. Solving for $n$:
+$$n = \frac{\log \varepsilon}{\log(1 - 2^{-(k+1)})} \approx \frac{\log \varepsilon}{-2^{-(k+1)}} = -\log(\varepsilon) \cdot 2^{k+1}$$
+Thus $n = \mathcal{O}(2^k)$ for fixed $\varepsilon$.
+\end{proof}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{combined_fpr_vs_size.png}
+\caption{False positive rate vs. hash size for different set sizes $k$. Left: small sets ($k=4$--$10$) require bytes to achieve 5\% FPR. Right: larger sets ($k=12$--$16$) require kilobytes, demonstrating the $\mathcal{O}(2^k)$ space complexity.}
+\label{fig:fpr-space}
+\end{figure}
+
+\begin{theorem}[Complement Non-Preservation]
+\label{thm:complement}
+The homomorphism $F$ does not preserve complement: $F(\neg_A x) \neq \neg_B F(x)$ for finite sets $x$.
+\end{theorem}
+
+\begin{proof}
+For any finite set $x$, the complement $\neg_A x = X^* \setminus x$ contains infinitely many elements from the free semigroup $X^*$. Since the hash function $h: X^* \to \{0,1\}^n$ uniformly distributes over $2^n$ possible outputs, by the pigeonhole principle, $F(\neg_A x)$ will have all bit positions set to 1 as elements from $\neg_A x$ are added:
+$$F(\neg_A x) = 0^n \,|\, h(y_1) \,|\, h(y_2) \,|\, \cdots = 1^n$$
+for any enumeration $\{y_1, y_2, \ldots\} \subseteq \neg_A x$.
+
+However, $\neg_B F(x) = \mathord{\sim}(h(x_1) \,|\, \cdots \,|\, h(x_k))$ for finite $x = \{x_1, \ldots, x_k\}$. Since $F(x)$ is a finite OR of $k$ hash values, some bit positions will remain 0 in $F(x)$, making those positions 1 in $\neg_B F(x)$ but also making some positions 0. Thus $\neg_B F(x) \neq 1^n = F(\neg_A x)$.
+\end{proof}
+
+\begin{remark}[Boolean Ring Alternative]
+\label{rem:boolean-ring}
+An alternative construction uses the Boolean ring $(\{0,1\}^m, \oplus, \land, \mathrm{id}, 0^m)$ with symmetric difference (XOR) instead of union. This construction maps sets to hash values via $G(\{x_1, \ldots, x_k\}) = h(x_1) \oplus \cdots \oplus h(x_k)$. The ring structure supports \emph{only} equality predicates---membership, subset, and complement operations are not available. However, equality testing has optimal FPR of $2^{-m}$ independent of set size, and the output distribution is perfectly uniform, providing stronger privacy guarantees for equality-only applications.
+\end{remark}
+
+\subsection{Two-Level Hashing for Scalability}
+\label{sec:two-level}
+
+The exponential space complexity of single-level hashing (Theorem~\ref{thm:space-complexity}) motivates a hierarchical approach. The two-level scheme partitions elements into bins, reducing effective set size per bin.
+
+\begin{definition}[Two-Level Hash Structure]
+Given hash output size $q$ bits, partition into:
+\begin{itemize}
+\item First $w$ bits: bin index (selecting one of $2^w$ bins)
+\item Remaining $q-w$ bits: element representation within bin
+\end{itemize}
+Total space: $n = 2^w(q-w)$ bits. Expected elements per bin: $k/2^w$.
+\end{definition}
+
+\begin{theorem}[Two-Level FPR]
+The membership FPR for the two-level scheme with $k$ elements is:
+$$\varepsilon(k,w,q) = \left(1 - 2^{-(k/2^w + 1)}\right)^{q-w}$$
+\end{theorem}
+
+This achieves practical FPR for large sets: with $w = 8$, $q = 256$, and $k = 1000$, we have approximately 4 elements per bin and FPR $\approx 2^{-248}$, using only 63.5 KB total storage.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.6\columnwidth]{fpr_vs_size_two_level.png}
+\caption{Two-level hashing achieves practical FPR for large sets ($k=15,000$) with approximately 60KB storage.}
+\label{fig:two-level}
+\end{figure}
+
+\subsection{Unified Hash Construction}
+\label{sec:unified-hash}
+
+All HBOS operations derive from a general hash-based construction that unifies probabilistic data structures with cryptographic privacy~\cite{bernoulli-types,oblivious-computing}:
 
 \begin{definition}[Hash-Based Bernoulli Type]
-A hash-based Bernoulli type consists of:
+\label{def:hash-bernoulli}
+A hash-based Bernoulli type $\Bernoulli{T}$ over base type $T$ consists of:
 \begin{enumerate}
 \item A keyed hash function $h: \{0,1\}^* \times \{0,1\}^s \rightarrow \{0,1\}^m$
 \item For each output value $y$, a set of valid encodings $\ValidEnc{y} \subseteq \{0,1\}^m$
 \item A seed $s$ such that for all inputs $x$: $h(\mathsf{enc}(x), s) \in \ValidEnc{f(x)}$
 \end{enumerate}
+The resulting type is a \emph{Bernoulli approximation} of $T$: operations on $\Bernoulli{T}$ approximate operations on $T$ with explicit error rates.
 \end{definition}
 
-The false positive rate emerges from encoding set sizes: $\alpha = |\ValidEnc{\mathsf{true}}|/2^m$. This unified view reveals that Bloom filters, trapdoor functions, and approximate maps are all instances of the same construction with different encoding strategies.
+The false positive rate emerges from encoding set sizes: $\fpr = |\ValidEnc{\mathsf{true}}|/2^m$. This unified view reveals that Bloom filters, trapdoor functions, and approximate maps are all instances of the same construction with different encoding strategies:
+\begin{itemize}
+\item \textbf{Bloom filter}: Multiple hash functions create overlapping valid encoding regions, yielding $\fpr = (1 - e^{-kn/m})^k$
+\item \textbf{HBOS trapdoor}: Single keyed hash with $\ValidEnc{\mathsf{true}} = \{H(k \| v)\}$, yielding $\fpr = 2^{-m}$ (collision probability)
+\item \textbf{Approximate maps}: Encoding sizes vary by output value, enabling the 1/p(y) principle for privacy
+\end{itemize}
 
 \subsection{Privacy-Space Trade-off}
+\label{sec:privacy-space}
 
-The same hash construction achieves fundamentally different goals by varying encoding sizes:
+The same hash construction achieves fundamentally different goals by varying encoding sizes~\cite{bernoulli-types}:
 
 \textbf{Space-Optimal Encoding}: $|\ValidEnc{y}| \propto \text{freq}(y)$ (proportional to frequency). Minimizes expected encoding size but reveals frequency information. Used in compression and space-efficient data structures.
 
-\textbf{Privacy-Optimal Encoding}: $|\ValidEnc{y}| \propto 1/\text{freq}(y)$ (inverse frequency). Achieves uniform output distribution, hiding frequency patterns. This is the \emph{1/p(y) principle}---the key insight connecting approximation to privacy.
+\textbf{Privacy-Optimal Encoding}: $|\ValidEnc{y}| \propto 1/\text{freq}(y)$ (inverse frequency). Achieves uniform output distribution, hiding frequency patterns. This is the \emph{1/p(y) principle} from Bernoulli type theory~\cite{oblivious-computing}---the key insight connecting approximation to privacy.
 
 \begin{theorem}[Uniformity from Inverse-Frequency]
+\label{thm:inverse-freq}
 With encoding sizes $|\ValidEnc{y}| = c/\text{freq}(y)$ for constant $c$:
 $$P[\text{Output} = y] = \frac{|\ValidEnc{y}|}{2^m} = \text{constant}$$
 achieving uniform output distribution without explicit randomization.
 \end{theorem}
 
-HBOS uses uniform-sized encodings (a middle ground), providing practical privacy at constant space cost per element.
+\begin{remark}[Theoretical Foundation]
+The 1/p(y) principle explains why hash-based constructions achieve privacy: by mapping inputs through a uniform hash function, high-entropy inputs produce uniformly distributed outputs regardless of the original distribution. This is an instance of the more general principle that encoding sizes inversely proportional to frequency yield privacy without explicit randomization.
+\end{remark}
+
+HBOS uses uniform-sized encodings (a middle ground), providing practical privacy at constant space cost per element. Each element receives a fixed-size hash representation, offering computational privacy when the input domain has sufficient entropy.
 
 \subsection{Cardinality Estimation}
 
@@ -396,7 +621,7 @@ We evaluate HBOS on:
 
 \begin{table}[h]
 \centering
-\caption{Operation Latency (microseconds)}
+\caption{Projected Operation Latency (microseconds)$^\dagger$}
 \label{tab:performance}
 \begin{tabular}{lrr}
 \toprule
@@ -411,6 +636,9 @@ Cardinality estimation & 1.2 & 0.1 \\
 Jaccard similarity & 2.1 & 0.2 \\
 \bottomrule
 \end{tabular}
+\vspace{0.5em}
+
+{\footnotesize $^\dagger$Based on algorithm complexity analysis; formal benchmark validation in progress.}
 \end{table}
 
 HBOS achieves microsecond-scale performance for common operations, making it suitable for real-time applications.
@@ -439,11 +667,7 @@ Throughput remains constant for small sets and decreases logarithmically for lar
 
 We validate security properties through:
 
-\textbf{Collision Testing}: No collisions found in $2^{40}$ random inputs with 256-bit hashes.
-
-\textbf{Statistical Analysis}: Output distributions pass NIST randomness tests.
-
-\textbf{Timing Analysis}: Operations exhibit constant-time behavior preventing timing attacks.
+\textbf{Collision Testing}: No collisions found in $2^{40}$ random inputs with 256-bit hashes, consistent with expected collision probability of $2^{-256}$.
 
 \subsection{Limitations and Attack Vectors}
 
@@ -567,6 +791,21 @@ Future directions include:
 \item Composition with differential privacy for enhanced protection
 \item Formal verification of implementation correctness
 \end{itemize}
+
+\subsection{Current Limitations}
+
+The current implementation provides core trapdoor and set operations. The following features are designed but not yet implemented:
+
+\begin{itemize}
+\item \textbf{Cryptographic key derivation}: The current implementation uses simplified hashing; production deployment requires HKDF or Argon2 for proper key derivation
+\item \textbf{Differential privacy integration}: The Laplace mechanism is designed but not implemented
+\item \textbf{Threshold secret sharing}: Algorithm specified in the API, implementation pending
+\item \textbf{Formal verification}: Coq proofs are planned for future work
+\item \textbf{Constant-time primitives}: Required for side-channel resistance in adversarial environments
+\item \textbf{NIST-validated randomness}: Output distribution testing against NIST SP 800-22 not yet performed
+\end{itemize}
+
+\noindent Performance figures in this paper are based on algorithm complexity analysis and microbenchmark design; comprehensive benchmarking with validated measurements is ongoing.
 
 HBOS demonstrates that practical privacy-preserving computation is achievable when applications can accept approximate results with explicit error bounds. The framework provides a valuable tool for scenarios where the trade-off between perfect accuracy and practical performance favors efficiency.
 

@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+message: "If you use this software or reference this work, please cite it as below."
+title: "Boolean Algebra over Trapdoor Sets: A Practical Framework for Privacy-Preserving Set Operations with Probabilistic Guarantees"
+type: software
+authors:
+  - family-names: Towell
+    given-names: Alexander
+    email: atowell@siue.edu
+    affiliation: "Southern Illinois University Edwardsville"
+repository-code: "https://github.com/queelius/oblivious-computing"
+abstract: >-
+  Hash-Based Oblivious Sets (HBOS) is a practical framework for privacy-preserving
+  set operations that combines cryptographic hash functions with probabilistic data
+  structures. Unlike traditional approaches using fully homomorphic encryption or
+  secure multi-party computation, HBOS achieves microsecond-scale performance by
+  embracing approximate operations with explicitly managed error rates.
+keywords:
+  - cryptographic hash functions
+  - oblivious data structures
+  - privacy-preserving computation
+  - approximate algorithms
+  - probabilistic data structures
+  - Bernoulli types
+license: MIT
+version: 0.5.0
+date-released: 2025-01-25
+preferred-citation:
+  type: article
+  title: "Boolean Algebra over Trapdoor Sets: A Practical Framework for Privacy-Preserving Set Operations with Probabilistic Guarantees"
+  authors:
+    - family-names: Towell
+      given-names: Alexander
+      email: atowell@siue.edu
+      affiliation: "Southern Illinois University Edwardsville"
+  year: 2025
+  abstract: >-
+    We present Hash-Based Oblivious Sets (HBOS), a practical framework for
+    privacy-preserving set operations that combines cryptographic hash functions
+    with probabilistic data structures. HBOS provides oblivious representation
+    through one-way hash transformations while operations return Bernoulli
+    Booleans with explicit error rates.

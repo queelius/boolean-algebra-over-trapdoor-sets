@@ -1,185 +1,139 @@
 # Cipher Trapdoor Sets (CTS)
 
-A modern C++20 header-only library for privacy-preserving set operations using cryptographic trapdoor functions. This library enables secure computation on encrypted sets without revealing the underlying data.
+A minimal Python library for privacy-preserving set operations using cryptographic trapdoor functions. Implements the core algorithms from the accompanying research paper.
 
-## Features
+## Key Insight
 
-- **Privacy-Preserving**: Perform set operations without exposing actual values
-- **One-Way Trapdoors**: Cryptographic hash-based transformations that cannot be reversed
-- **Approximate Operations**: All operations include explicit error rates
-- **Composable Design**: Simple components that combine to create powerful applications
-- **Modern C++20**: Uses concepts, ranges, and parallel STL for performance
-- **Header-Only**: Easy integration with no compilation required
+**One-way hash transformations enable equality testing and set operations on encrypted data without revealing underlying values.**
+
+## Installation
+
+```bash
+pip install -e .
+
+# With development dependencies
+pip install -e ".[dev]"
+```
 
 ## Quick Start
 
-```cpp
-#include <cipher_trapdoor_sets/cts.hpp>
-#include <iostream>
-#include <vector>
+```python
+from cts import TrapdoorFactory, BooleanSet
 
-using namespace cts;
+# Create a factory with a secret key
+factory = TrapdoorFactory()
 
-int main() {
-    // Secret key for trapdoor generation
-    std::string_view secret = "my-secret-key";
+# Create privacy-preserving sets from plaintext values
+alice_contacts = BooleanSet.from_values(["bob", "carol", "dave"], factory)
+bob_contacts = BooleanSet.from_values(["alice", "carol", "eve"], factory)
 
-    // Create trapdoor factory
-    trapdoor_factory<32> factory(secret);
+# Set operations - work on encrypted data
+common = alice_contacts & bob_contacts  # Intersection
+all_contacts = alice_contacts | bob_contacts  # Union
 
-    // Create trapdoors from sensitive data
-    auto td1 = factory.create(std::string("Alice"));
-    auto td2 = factory.create(std::string("Bob"));
-
-    // Compare without revealing actual values
-    auto equal = (td1 == td2);
-    std::cout << "Equal: " << equal.value()
-              << " (FPR: " << equal.false_positive_rate() << ")\n";
-
-    // Create privacy-preserving sets
-    sets::boolean_set_factory<std::string> set_factory(secret);
-    std::vector<std::string> documents = {"doc1", "doc2", "doc3"};
-    auto private_set = set_factory.from_collection(documents);
-
-    // Perform set operations without exposing data
-    auto td_doc = factory.create(std::string("doc2"));
-    auto contains = private_set.contains(td_doc);
-    std::cout << "Contains doc2: " << contains.value() << "\n";
-
-    return 0;
-}
-```
-
-## Building
-
-### Requirements
-- C++20 compatible compiler (GCC 11+, Clang 13+, MSVC 2022+)
-- CMake 3.20+
-- Optional: Intel TBB for parallel operations
-
-### Build Instructions
-
-```bash
-mkdir build && cd build
-cmake ..
-cmake --build .
-
-# Run tests
-ctest --output-on-failure
-
-# Run examples
-./examples/basic_trapdoor
-./examples/set_operations
-```
-
-### CMake Integration
-
-```cmake
-find_package(cipher_trapdoor_sets REQUIRED)
-target_link_libraries(your_target PRIVATE cts::cts)
-```
-
-Or using FetchContent:
-
-```cmake
-include(FetchContent)
-FetchContent_Declare(
-    cipher_trapdoor_sets
-    GIT_REPOSITORY https://github.com/queelius/cipher_trapdoor_sets.git
-    GIT_TAG main
-)
-FetchContent_MakeAvailable(cipher_trapdoor_sets)
-target_link_libraries(your_target PRIVATE cts::cts)
+# Membership testing with explicit error bounds
+carol = factory.create("carol")
+result = alice_contacts.contains(carol)
+print(f"Contains carol: {result.value} (confidence: {result.confidence:.2%})")
 ```
 
 ## Core Concepts
 
 ### Trapdoors
-One-way cryptographic transformations that preserve equality testing while hiding actual values:
+One-way cryptographic transformations: `T_k(v) = H(k || v)`
 
-```cpp
-trapdoor_factory<32> factory(secret_key);
-auto td = factory.create(sensitive_value);
+```python
+factory = TrapdoorFactory(key=b'secret')
+t1 = factory.create("alice")
+t2 = factory.create("alice")
+print(t1 == t2)  # True - same value, same key
 ```
 
-### Approximate Values
-All operations return approximate results with explicit error rates:
+### Bernoulli Booleans
+All operations return `BernoulliBoolean` with explicit error rates (α = FPR, β = FNR):
 
-```cpp
-auto result = operation();
-if (result.value() && result.false_positive_rate() < 0.001) {
-    // High confidence in positive result
-}
+```python
+result = set.contains(trapdoor)
+print(f"Value: {result.value}")
+print(f"False positive rate: {result.alpha}")
+print(f"Confidence: {result.confidence}")
+
+# Bayesian posterior given prior probability
+prior = 0.01  # rare event
+posterior = result.posterior(prior)
 ```
 
-### Set Types
+### Error Propagation
+Set operations compose error rates mathematically:
 
-#### Symmetric Difference Sets
-Support XOR-based operations, ideal for disjoint set unions:
+| Operation | FPR (α) | FNR (β) |
+|-----------|---------|---------|
+| AND (∩)   | α₁·α₂   | β₁ + β₂ - β₁·β₂ |
+| OR (∪)    | α₁ + α₂ - α₁·α₂ | β₁·β₂ |
+| NOT       | β       | α (rates swap) |
 
-```cpp
-sets::symmetric_difference_set_factory<T> factory(secret);
-auto set1 = factory.from_unique(collection1);
-auto set2 = factory.from_unique(collection2);
-auto union_set = set1 ^ set2;  // XOR for disjoint union
+### Boolean Sets
+Full Boolean algebra on trapdoor sets:
+
+```python
+s1 | s2   # Union - FPR increases
+s1 & s2   # Intersection - FPR decreases
+s1 ^ s2   # Symmetric difference
+s1 - s2   # Difference
 ```
 
-#### Boolean Sets
-Full Boolean algebra operations with membership testing:
+## API Reference
 
-```cpp
-sets::boolean_set_factory<T> factory(secret);
-auto set = factory.from_collection(items);
-auto intersection = set1 & set2;
-auto union_set = set1 | set2;
-auto complement = ~set1;
+### `HashValue`
+Fixed-size byte array with bitwise operations (`^`, `&`, `|`, `~`).
+
+### `BernoulliBoolean`
+A boolean with explicit error rates (second-order Bernoulli type):
+- `.value` - the observed result
+- `.alpha` - false positive rate
+- `.beta` - false negative rate
+- `.confidence` - probability of correctness (1 - α - β)
+- `.confusion_matrix` - 2×2 transition matrix [[1-α, α], [β, 1-β]]
+- `.posterior(prior)` - Bayesian update P(latent=True | observation)
+
+### `TrapdoorFactory`
+Creates trapdoors from a secret key:
+- `TrapdoorFactory(key=None)` - generates random key if not provided
+- `.create(value)` - transform string/bytes to trapdoor
+- `.key_fingerprint` - public fingerprint for compatibility checking
+
+### `BooleanSet`
+Privacy-preserving set with Boolean operations:
+- `BooleanSet.from_values(values, factory)` - create from plaintexts
+- `.contains(trapdoor)` - membership test returning `BernoulliBoolean`
+- `|`, `&`, `^`, `-` - set operations with error propagation
+
+## Running Tests
+
+```bash
+pytest tests/ -v
 ```
 
-## API Design Principles
+## Demo
 
-1. **Explicit Approximation**: Error rates are always visible
-2. **Type Safety**: Strong types prevent mixing incompatible operations
-3. **Composability**: Operations combine naturally
-4. **Zero-Cost Abstractions**: Template-based design with no runtime overhead
-5. **Fail-Fast**: Incompatible operations throw immediately
+```bash
+python examples/demo.py
+```
 
-## Applications
+## Security Model
 
-- **Private Set Intersection**: Find common elements without revealing sets
-- **Secure Deduplication**: Identify duplicates in encrypted data
-- **Privacy-Preserving Analytics**: Compute statistics on sensitive data
-- **Encrypted Search**: Query encrypted databases
-- **Federated Learning**: Aggregate models without exposing training data
+- **Preimage-based privacy**: Cannot recover original values without the key
+- **Dictionary attacks**: Vulnerable if input domain has low entropy
+- **Pattern leakage**: Frequency and correlation patterns may leak information
+- **Suitable for**: High-entropy inputs where dictionary attacks are infeasible
 
-## Performance Considerations
+## Research Paper
 
-- Hash size affects security and collision probability
-- Parallel STL used when available (link with TBB)
-- Batch operations provided for efficiency
-- Header-only design enables full optimization
-
-## Security Notes
-
-- Use cryptographically secure keys
-- Larger hash sizes (256+ bits) recommended for production
-- Error rates depend on hash size: FPR ≈ 2^(-bits)
-- Keys should never be shared between untrusted parties
-
-## Contributing
-
-Contributions are welcome! Please ensure:
-- Code follows modern C++ best practices
-- All tests pass
-- New features include tests and examples
-- Documentation is updated
+See `paper/main_comprehensive.tex` for the full theoretical treatment, including:
+- Formal security analysis
+- Error propagation proofs
+- Relationship to Bernoulli types
 
 ## License
 
-MIT License - See LICENSE file for details
-
-## References
-
-- Cryptographic Hash Functions
-- Bloom Filters and Approximate Data Structures
-- Private Set Intersection Protocols
-- Homomorphic Encryption Techniques
+MIT License
