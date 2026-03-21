@@ -263,8 +263,17 @@ For independent approximate Booleans $\obs{b}_1, \obs{b}_2$ with error rates $(\
 Negation swaps the meaning of false positive and false negative. For conjunction, a false positive requires both operands to err (independent), while a false negative occurs if either errs. Disjunction is dual by De Morgan's laws.
 \end{proof}
 
+% FIXED (BA-5): The original corollary gave a vague linear bound without
+% distinguishing OR vs AND composition. Also renamed n -> t to avoid
+% collision with hash width n used elsewhere.
 \begin{corollary}[Composition Accumulation]
-For $n$ operations each with symmetric error rate $\varepsilon$, the accumulated error is bounded by $n\varepsilon - O(\varepsilon^2)$ for small $\varepsilon$.
+\label{cor:composition-accumulation}
+For $t$-fold composition of independent Bernoulli Booleans each with FPR $\fpr$:
+\begin{itemize}
+\item \textbf{$t$-fold OR (union)}: $\fpr_{\text{total}} = 1 - (1 - \fpr)^t \approx t\fpr$ for small $\fpr$.
+\item \textbf{$t$-fold AND (intersection)}: $\fpr_{\text{total}} = \fpr^t$ (FPR decreases exponentially).
+\end{itemize}
+Dually, for FNR $\fnr$: $t$-fold AND accumulates as $\fnr_{\text{total}} = 1 - (1-\fnr)^t$, and $t$-fold OR reduces as $\fnr_{\text{total}} = \fnr^t$.
 \end{corollary}
 
 \subsection{Layered Privacy: Oblivious Representation, Bernoulli Results}
@@ -355,6 +364,9 @@ $$B := \left(\{0,1\}^m, \lor, \land, \neg, 0^m, 1^m\right)$$
 where $\{0,1\}^m$ consists of $m$-bit vectors with bitwise OR, AND, negation, zero vector, and all-ones vector.
 \end{definition}
 
+% FIXED (BA-2): Added caveat that intersection mapping (\cap -> \land) is only
+% a superset: F(A) & F(B) \supseteq F(A \cap B), with extra 1-bits possible
+% from cross-element hash collisions.
 \begin{definition}[Trapdoor Homomorphism]
 The homomorphism $F : A \to B$ is defined as:
 $$F(\beta) := \begin{cases}
@@ -366,7 +378,15 @@ $$F(\beta) := \begin{cases}
     1^m            & \beta = \{0,1\}^*
 \end{cases}$$
 where $H: \{0,1\}^* \to \{0,1\}^m$ is a cryptographic hash function. For a set $S = \{x_1, \ldots, x_k\}$, this extends to $F(S) = H(x_1) \lor H(x_2) \lor \cdots \lor H(x_k)$.
+
+\textbf{Caveat on intersection}: The mapping $\cap \mapsto \land$ satisfies $F(A) \land F(B) \supseteq F(A \cap B)$, not equality. Extra 1-bits arise when an element of $A \setminus B$ and an element of $B \setminus A$ both set the same bit position, producing false positives in the intersection encoding. The union mapping $\cup \mapsto \lor$ is exact.
 \end{definition}
+
+% FIXED (BA-6): Added Bloom filter connection remark after the main construction definition.
+\begin{remark}[Bloom Filter Connection]
+\label{rem:bloom-filter}
+The construction presented here is mathematically equivalent to a Bloom filter with a single hash function ($k=1$). The contribution of this paper is not the construction itself, which is well known, but the algebraic analysis: the characterization as a Boolean algebra homomorphism, the precise error propagation formulas for composed operations, and the proof that complement is not preserved.
+\end{remark}
 
 \begin{theorem}[One-Wayness of Trapdoor Homomorphism]
 \label{thm:one-way}
@@ -379,21 +399,28 @@ The homomorphism $F$ is one-way for two independent reasons:
 
 These two properties combine to provide computational one-wayness: even though the mapping is many-to-one, finding any preimage remains computationally hard.
 
-\begin{corollary}[Bit-Rate Formula]
-\label{cor:bit-rate}
-The \emph{bit-rate} (bits per element) required to achieve a target false positive rate $\varepsilon$ for a set of $n$ elements is:
-$$b(n, \varepsilon) = \frac{\log_2 \varepsilon}{n \cdot \alpha(n)}$$
-where $\alpha(n) = 1 - 2^{-(n+1)}$ is the per-bit occupancy probability after $n$ insertions.
-\end{corollary}
-
-\begin{proof}
-From the FPR formula $\varepsilon = \alpha(n)^m$, solving for $m$ gives $m = \log_2(\varepsilon) / \log_2(\alpha(n))$. For $\alpha(n)$ close to 1, $\log_2(\alpha(n)) \approx \alpha(n) - 1 \approx -\alpha(n)$ for small deviations. Thus the bit-rate $m/n \approx \log_2(\varepsilon)/(n \cdot \alpha(n))$.
-\end{proof}
+% FIXED: Replaced Corollary 1 (Bit-Rate Formula) with correct derivation.
+% The original used the wrong approximation log_2(alpha) ~ -(alpha) for alpha close to 1.
+% Correct: log_2(1 - delta) ~ -delta/ln(2) for small delta.
+% Also renamed set size variable from n to k to avoid collision with hash width n
+% used in Theorem 5 (Privacy Preservation) and Theorem 4 (Membership FPR).
+% FIXED (BA-3): Renamed set size from k to s to avoid collision with hash key k
+% in T_k(v) = H(k || v). Cannot use m (already bit-vector width here).
+\begin{remark}[Bit-Rate Asymptotics]
+\label{rem:bit-rate}
+The bit-rate (bits per element) required to achieve a target false positive rate $\varepsilon$ for a set of $s$ elements in an $m$-bit vector can be derived as follows. From the FPR formula $\varepsilon = \alpha(s)^m$ where $\alpha(s) = 1 - 2^{-(s+1)}$ is the per-bit occupancy probability, solving for $m$ gives:
+$$m = \frac{\log_2 \varepsilon}{\log_2 \alpha(s)}$$
+For large $s$, $\alpha(s) \to 1$ and writing $\delta = 2^{-(s+1)}$, we have:
+$$\log_2(1 - \delta) \approx \frac{-\delta}{\ln 2}$$
+so the required bit-vector length is:
+$$m \approx \frac{-\log_2(\varepsilon) \cdot \ln 2}{\delta} = -\log_2(\varepsilon) \cdot \ln 2 \cdot 2^{s+1}$$
+and the bit-rate $m/s$ grows exponentially with $s$.
+\end{remark}
 
 \begin{remark}[Absolute Efficiency]
 The \emph{absolute efficiency} of the bit-vector representation is:
-$$\mathsf{Eff}(n) = -n \log_2 \alpha(n)$$
-which is exponential with respect to $n$. As $n \to \infty$, efficiency approaches 0, making this construction practical only for small sets (typically $n \leq 20$). For larger sets, the two-level hashing scheme of Section~\ref{sec:two-level} is required.
+$$\mathsf{Eff}(s) = -s \log_2 \alpha(s)$$
+which tends to 0 exponentially as $s \to \infty$ (since $\log_2 \alpha(s) \to 0$ while $s$ grows linearly), making this construction practical only for small sets (typically $s \leq 20$). For larger sets, the two-level hashing scheme of Section~\ref{sec:two-level} is required.
 \end{remark}
 
 \subsection{Security Analysis}
@@ -423,16 +450,20 @@ In the random oracle model, $H(k||x)$ is uniformly distributed over $\{0,1\}^n$.
 
 HBOS exhibits approximate algebraic properties with explicit error bounds:
 
+% FIXED: Intersection claim was stated as approximate equality, but bitwise AND
+% actually satisfies F(A) & F(B) \supseteq F(A \cap B) -- the AND can have extra
+% 1-bits from cross-element hash collisions (element in A\setminus B colliding
+% with element in B\setminus A). This means intersection has a false positive rate.
 \begin{definition}[Approximate Set Operations]
-For hash-transformed sets $H(A)$ and $H(B)$, operations preserve set relationships probabilistically:
+For hash-transformed sets $H(A)$ and $H(B)$ (represented as OR of hash values per Definition~8), operations preserve set relationships as follows:
 \begin{itemize}
-\item Union: $H(A) \cup H(B) \approx H(A \cup B)$ with error $\epsilon \leq 2^{-n}$
-\item Intersection: $H(A) \cap H(B) \approx H(A \cap B)$ with error $\epsilon \leq 2^{-n}$
+\item Union: $H(A) \lor H(B) = H(A \cup B)$ (exact by definition of bitwise OR)
+\item Intersection: $H(A) \land H(B) \supseteq H(A \cap B)$, i.e., the bitwise AND is a superset of the true intersection encoding. Equality holds when there are no cross-element hash collisions between $A \setminus B$ and $B \setminus A$. Each extra 1-bit arises with probability at most $|A \setminus B| \cdot |B \setminus A| / 2^n$ per bit position, yielding a per-element false positive rate bounded by $(1 - (1-2^{-n})^{|A \setminus B| \cdot |B \setminus A|})$.
 \item Symmetric difference: $H(A) \oplus H(B) = H(A \triangle B)$ (exact for disjoint sets)
 \end{itemize}
 \end{definition}
 
-\textbf{Important Note}: These are \emph{not} true homomorphic properties as operations are approximate with collision-bounded error rates. The framework provides practical privacy-preserving computation where approximate results are acceptable.
+\textbf{Important Note}: Union is exact (OR preserves all set bits), but intersection via AND is only a superset---extra 1-bits from cross-element collisions produce false positives. These are \emph{not} true homomorphic properties in general; the framework provides practical privacy-preserving computation where approximate results with explicit error bounds are acceptable.
 
 \subsection{Size-Dependent False Positive Analysis}
 \label{sec:fpr-analysis}
@@ -753,7 +784,8 @@ HBOS supports secure aggregation in federated learning by allowing participants 
 
 \subsection{Homomorphic Encryption}
 
-Fully homomorphic encryption (FHE) enables arbitrary computation on encrypted data. Since Gentry's breakthrough~\cite{gentry2009fully}, significant progress has been made in practical FHE systems. TFHE~\cite{chillotti2020tfhe} and CKKS~\cite{cheon2017homomorphic} achieve sub-second bootstrapping, while recent work on fully homomorphic encryption over the integers~\cite{brakerski2022fully} simplifies implementation. However, FHE still incurs 1000-10000× overhead for general computation. Partially homomorphic schemes like Paillier~\cite{paillier1999public} offer better performance but support only specific operations. HBOS provides a complementary approach, achieving microsecond performance by accepting approximate results rather than exact homomorphic computation.
+Fully homomorphic encryption (FHE) enables arbitrary computation on encrypted data. Since Gentry's breakthrough~\cite{gentry2009fully}, significant progress has been made in practical FHE systems. TFHE~\cite{chillotti2020tfhe} and CKKS~\cite{cheon2017homomorphic} achieve sub-second bootstrapping, % FIXED (BA-1): Brakerski year corrected from 2022 to 2012.
+while Brakerski's FHE without modulus switching~\cite{brakerski2012fully} simplifies implementation. However, FHE still incurs 1000-10000× overhead for general computation. Partially homomorphic schemes like Paillier~\cite{paillier1999public} offer better performance but support only specific operations. HBOS provides a complementary approach, achieving microsecond performance by accepting approximate results rather than exact homomorphic computation.
 
 \subsection{Secure Multi-Party Computation}
 
@@ -761,15 +793,20 @@ MPC protocols enable joint computation without revealing inputs. Classical proto
 
 \subsection{Private Set Intersection}
 
-PSI protocols have evolved significantly since early work~\cite{meadows1986more, freedman2004efficient}. Modern protocols achieve remarkable efficiency: OPRF-based PSI~\cite{raghuraman2022blazing} handles billion-element sets, while circuit-PSI~\cite{chandran2022circuit} enables arbitrary computations on intersection results. Unbalanced PSI~\cite{chen2022blazing} optimizes for asymmetric set sizes common in practice. Recent work on PSI from pseudorandom correlation generators~\cite{schoppmann2023psi} achieves optimal communication. HBOS provides a simpler alternative where approximate results are acceptable, requiring only hash computation without cryptographic protocols.
+PSI protocols have evolved significantly since early work~\cite{meadows1986more, freedman2004efficient}. Modern protocols achieve remarkable efficiency: OPRF-based PSI~\cite{raghuraman2022blazing} handles billion-element sets, while circuit-PSI~\cite{chandran2022circuit} enables arbitrary computations on intersection results. % FIXED (BA-1): chen2022blazing was a duplicate of raghuraman2022blazing with fabricated
+% authors. Replaced with Chen et al. 2017 (actual unbalanced PSI work using HE).
+Unbalanced PSI~\cite{chen2017unbalanced} optimizes for asymmetric set sizes common in practice. Recent work on PSI from pseudorandom correlation generators~\cite{schoppmann2023psi} achieves optimal communication. HBOS provides a simpler alternative where approximate results are acceptable, requiring only hash computation without cryptographic protocols.
 
 \subsection{Approximate Data Structures}
 
-Probabilistic data structures trade accuracy for efficiency. Bloom filters~\cite{bloom1970space} pioneered this approach for membership testing. Cuckoo filters~\cite{fan2014cuckoo} improve on Bloom filters by supporting deletions. Count-Min sketches~\cite{cormode2005improved} and Count-HyperLogLog~\cite{ting2020count} enable frequency and cardinality estimation. Recent work includes learned Bloom filters~\cite{kraska2018case} using machine learning to optimize performance, and XOR filters~\cite{graf2020xor} achieving near-optimal space efficiency. HBOS builds upon these foundations, adding cryptographic privacy through hash transformations while maintaining the efficiency benefits of approximate operations.
+Probabilistic data structures trade accuracy for efficiency. Bloom filters~\cite{bloom1970space} pioneered this approach for membership testing. Cuckoo filters~\cite{fan2014cuckoo} improve on Bloom filters by supporting deletions. % FIXED (BA-1): ting2020count had fabricated arXiv ID (2005.14165 = GPT-3 paper).
+% Replaced with Ting's actual cardinality estimation work (KDD 2014).
+Count-Min sketches~\cite{cormode2005improved} and streamed cardinality estimation~\cite{ting2014streamed} enable frequency and cardinality estimation. Recent work includes learned Bloom filters~\cite{kraska2018case} using machine learning to optimize performance, and XOR filters~\cite{graf2020xor} achieving near-optimal space efficiency. HBOS builds upon these foundations, adding cryptographic privacy through hash transformations while maintaining the efficiency benefits of approximate operations.
 
 \subsection{Differential Privacy}
 
-Differential privacy (DP)~\cite{dwork2006calibrating} provides statistical privacy guarantees through calibrated noise addition. The field has matured significantly with deployment at major tech companies~\cite{erlingsson2014rappor, apple2017differential}. Recent advances include the exponential mechanism~\cite{mcsherry2021exponential}, concentrated DP~\cite{bun2016concentrated} for tighter privacy accounting, and shuffle DP~\cite{erlingsson2019amplification} amplifying privacy through anonymization. Private aggregation techniques~\cite{bonawitz2021practical} enable federated learning at scale. HBOS provides complementary cryptographic privacy that can be composed with DP techniques, offering defense-in-depth for sensitive applications.
+Differential privacy (DP)~\cite{dwork2006calibrating} provides statistical privacy guarantees through calibrated noise addition. The field has matured significantly with deployment at major tech companies~\cite{erlingsson2014rappor, apple2017differential}. % FIXED (BA-1): McSherry year corrected from 2021 to 2007; Bonawitz year corrected from 2021 to 2017.
+Recent advances include mechanism design via differential privacy~\cite{mcsherry2007exponential}, concentrated DP~\cite{bun2016concentrated} for tighter privacy accounting, and shuffle DP~\cite{erlingsson2019amplification} amplifying privacy through anonymization. Practical secure aggregation~\cite{bonawitz2017practical} enables federated learning at scale. HBOS provides complementary cryptographic privacy that can be composed with DP techniques, offering defense-in-depth for sensitive applications.
 
 \section{Conclusion}
 \label{sec:conclusion}
@@ -856,15 +893,20 @@ public:
                - false_negative_rate_;
   }
 
-  // Error propagation for operations
+  // Error propagation for AND operation
+  // FIXED: FPR for AND = product (both must be false positives),
+  //        FNR for AND = inclusion-exclusion (either can be false negative).
+  //        Previously used min(fpr1,fpr2) and b1+b2, which were wrong.
   approximate operator&&(
     const approximate& other) const {
     return approximate(
       value_ && other.value_,
-      min(false_positive_rate_,
-          other.false_positive_rate_),
+      false_positive_rate_ *
+          other.false_positive_rate_,
       false_negative_rate_ +
-        other.false_negative_rate_);
+        other.false_negative_rate_ -
+        false_negative_rate_ *
+          other.false_negative_rate_);
   }
 };
 \end{lstlisting}

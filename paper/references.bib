@@ -320,12 +320,15 @@
   year={2017}
 }
 
-@article{brakerski2022fully,
-  title={Fully homomorphic encryption from ring-LWE and security for key dependent messages},
-  author={Brakerski, Zvika and Vaikuntanathan, Vinod},
-  journal={Annual Cryptology Conference},
-  pages={505--524},
-  year={2022}
+% FIXED (BA-1): Year was 2022, should be 2012. This is Brakerski,
+% "Fully Homomorphic Encryption without Modulus Switching", CRYPTO 2012.
+@inproceedings{brakerski2012fully,
+  title={Fully Homomorphic Encryption without Modulus Switching from Classical {GapSVP}},
+  author={Brakerski, Zvika},
+  booktitle={Annual Cryptology Conference (CRYPTO)},
+  pages={868--886},
+  year={2012},
+  organization={Springer}
 }
 
 @inproceedings{keller2020mp,
@@ -378,12 +381,17 @@
   year={2022}
 }
 
-@inproceedings{chen2022blazing,
-  title={Blazing fast PSI from improved OKVS and subfield VOLE},
-  author={Chen, Hao and Liang, Zhicong and Huang, Zhe},
-  booktitle={USENIX Security Symposium},
-  pages={1435--1452},
-  year={2022}
+% FIXED (BA-1): Removed duplicate. This entry had the same title as
+% raghuraman2022blazing ("Blazing fast PSI from improved OKVS and subfield VOLE")
+% but with fabricated authors (Chen, Liang, Huang) and wrong venue.
+% The real paper is by Raghuraman & Rindal, CCS 2022 (raghuraman2022blazing).
+% Kept as alias pointing to the description of unbalanced PSI instead.
+@inproceedings{chen2017unbalanced,
+  title={Fast Private Set Intersection from Homomorphic Encryption},
+  author={Chen, Hao and Laine, Kim and Rindal, Peter},
+  booktitle={Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security},
+  pages={1243--1255},
+  year={2017}
 }
 
 @article{schoppmann2023psi,
@@ -402,11 +410,15 @@
   year={2014}
 }
 
-@article{ting2020count,
-  title={Count-HyperLogLog: a more memory-efficient cardinality estimator},
+% FIXED (BA-1): arXiv ID 2005.14165 is the GPT-3 paper (Brown et al., 2020),
+% not a cardinality estimation paper. This entry was fabricated.
+% Replaced with Ting's actual cardinality estimation work (VLDB 2014).
+@inproceedings{ting2014streamed,
+  title={Streamed approximate counting of distinct elements: Beating optimal batch methods},
   author={Ting, Daniel},
-  journal={arXiv preprint arXiv:2005.14165},
-  year={2020}
+  booktitle={Proceedings of the 20th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining},
+  pages={442--451},
+  year={2014}
 }
 
 @inproceedings{kraska2018case,
@@ -443,13 +455,15 @@
   year={2017}
 }
 
-@article{mcsherry2021exponential,
-  title={The exponential mechanism for differential privacy revisited},
+% FIXED (BA-1): Year was 2021, should be 2007. This is McSherry & Talwar,
+% "Mechanism Design via Differential Privacy", FOCS 2007.
+@inproceedings{mcsherry2007exponential,
+  title={Mechanism Design via Differential Privacy},
   author={McSherry, Frank and Talwar, Kunal},
-  journal={Journal of Privacy and Confidentiality},
-  volume={11},
-  number={1},
-  year={2021}
+  booktitle={48th Annual IEEE Symposium on Foundations of Computer Science (FOCS)},
+  pages={94--103},
+  year={2007},
+  organization={IEEE}
 }
 
 @inproceedings{bun2016concentrated,
@@ -468,12 +482,14 @@
   year={2019}
 }
 
-@inproceedings{bonawitz2021practical,
-  title={Practical secure aggregation for privacy-preserving machine learning},
+% FIXED (BA-1): Year was 2021, should be 2017. This is Bonawitz et al.,
+% "Practical Secure Aggregation for Privacy-Preserving Machine Learning", CCS 2017.
+@inproceedings{bonawitz2017practical,
+  title={Practical Secure Aggregation for Privacy-Preserving Machine Learning},
   author={Bonawitz, Keith and Ivanov, Vladimir and Kreuter, Ben and Marcedone, Antonio and McMahan, H Brendan and Patel, Sarvar and Ramage, Daniel and Segal, Aaron and Seth, Karn},
   booktitle={Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security},
   pages={1175--1191},
-  year={2021}
+  year={2017}
 }
 
 @unpublished{bernoulli-types,
