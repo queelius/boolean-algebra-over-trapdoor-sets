@@ -1,3 +1,4 @@
+% REFRAMED: Replaced "oblivious" with "trapdoor" throughout (2026-03-22)
 \documentclass[10pt,conference]{IEEEtran}
 \IEEEoverridecommandlockouts
 
@@ -43,7 +44,7 @@
 \newcommand{\lat}[1]{#1}                    % Latent/true value
 \newcommand{\Bool}{\mathbb{B}}              % Boolean type
 \newcommand{\Bernoulli}[1]{\mathcal{B}\langle #1 \rangle}  % Bernoulli type
-\newcommand{\Oblivious}[1]{\mathcal{O}\langle #1 \rangle}  % Oblivious type
+% \Oblivious macro removed during trapdoor reframing (was unused)
 \newcommand{\ConfMat}{Q}                    % Confusion matrix
 \newcommand{\ValidEnc}[1]{\mathsf{Valid}(#1)}  % Valid encodings
 
@@ -59,34 +60,34 @@ Email: atowell@siue.edu}}
 \maketitle
 
 \begin{abstract}
-We present Hash-Based Oblivious Sets (HBOS), a practical framework for privacy-preserving set operations that combines cryptographic hash functions with probabilistic data structures. Unlike traditional approaches using fully homomorphic encryption or secure multi-party computation, HBOS achieves microsecond-scale performance by embracing approximate operations with explicitly managed error rates.
+We present Hash-Based Trapdoor Sets (HBTS), a practical framework for privacy-preserving set operations that combines cryptographic hash functions with probabilistic data structures. Unlike traditional approaches using fully homomorphic encryption or secure multi-party computation, HBTS achieves microsecond-scale performance by embracing approximate operations with explicitly managed error rates.
 
-HBOS provides \emph{oblivious representation} through one-way hash transformations---the underlying data cannot be recovered from hash values. Operations return \emph{Bernoulli Booleans}: plaintext approximate results with explicit error rates (false positive rate $\alpha$, false negative rate $\beta$). This layered model trades full obliviousness of query results for practical efficiency, making it suitable for applications where query patterns are not sensitive or results are shared.
+HBTS provides \emph{trapdoor representation} through one-way hash transformations---the underlying data cannot be recovered from hash values. Operations return \emph{Bernoulli Booleans}: plaintext approximate results with explicit error rates (false positive rate $\alpha$, false negative rate $\beta$). This layered model accepts observable query results in exchange for practical efficiency, making it suitable for applications where query patterns are not sensitive or results are shared.
 
 Our framework provides: (1) a systematic approach to propagating error bounds through composed set operations using Bernoulli type composition rules, (2) efficient Boolean and symmetric difference operations on hash-transformed data with quantifiable false positive rates, and (3) practical implementations of privacy-preserving primitives including private set intersection and secure aggregation. We build upon established techniques from probabilistic data structures (Bloom filters, HyperLogLog) while adding cryptographic privacy through one-way hash transformations.
 
-Experimental evaluation demonstrates that HBOS operations complete in 0.4-2.1 microseconds for typical workloads, offering 1000-10000× speedup over homomorphic encryption approaches. The framework provides false positive rates bounded by hash collision probability (e.g., $2^{-256}$ for SHA-256), with privacy guarantees that depend on input entropy and threat model assumptions. We validate HBOS through implementations of private set intersection, secure deduplication, and federated learning aggregation, showing practical applicability where approximate results with explicit error bounds are acceptable.
+Experimental evaluation demonstrates that HBTS operations complete in 0.4-2.1 microseconds for typical workloads, offering 1000-10000× speedup over homomorphic encryption approaches. The framework provides false positive rates bounded by hash collision probability (e.g., $2^{-256}$ for SHA-256), with privacy guarantees that depend on input entropy and threat model assumptions. We validate HBTS through implementations of private set intersection, secure deduplication, and federated learning aggregation, showing practical applicability where approximate results with explicit error bounds are acceptable.
 \end{abstract}
 
 \begin{IEEEkeywords}
-cryptographic hash functions, oblivious data structures, privacy-preserving computation, approximate algorithms, probabilistic data structures
+cryptographic hash functions, trapdoor data structures, privacy-preserving computation, approximate algorithms, probabilistic data structures
 \end{IEEEkeywords}
 
 \section{Introduction}
 
 The proliferation of cloud computing and data analytics has created an urgent need for privacy-preserving computational frameworks that enable operations on sensitive data without exposing the underlying values. Traditional approaches to this problem fall into two categories: cryptographic techniques such as fully homomorphic encryption (FHE)~\cite{gentry2009fully} and secure multi-party computation (MPC)~\cite{yao1982protocols}, and statistical techniques such as differential privacy~\cite{dwork2006calibrating}. While powerful, these approaches often suffer from computational overhead that limits their practical deployment.
 
-We present Hash-Based Oblivious Sets (HBOS), a practical framework that achieves efficient privacy-preserving set operations by combining cryptographic hash functions with probabilistic data structures. Our approach differs from existing solutions by explicitly embracing approximation, making error rates transparent throughout the computational pipeline. This design choice enables HBOS to achieve microsecond-scale performance while providing privacy bounded by hash collision probabilities.
+We present Hash-Based Trapdoor Sets (HBTS), a practical framework that achieves efficient privacy-preserving set operations by combining cryptographic hash functions with probabilistic data structures. Our approach differs from existing solutions by explicitly embracing approximation, making error rates transparent throughout the computational pipeline. This design choice enables HBTS to achieve microsecond-scale performance while providing privacy bounded by hash collision probabilities.
 
-The core insight underlying HBOS is that many real-world applications can tolerate controlled error rates in exchange for efficiency and privacy. By using cryptographic hash functions as one-way transformations, we map sensitive data into a hash domain where equality testing is preserved probabilistically while the original values remain computationally hidden. All subsequent operations work exclusively on these hash values, never requiring access to the plaintext. This approach builds upon well-established techniques from probabilistic data structures while adding cryptographic privacy guarantees.
+The core insight underlying HBTS is that many real-world applications can tolerate controlled error rates in exchange for efficiency and privacy. By using cryptographic hash functions as one-way transformations, we map sensitive data into a hash domain where equality testing is preserved probabilistically while the original values remain computationally hidden. All subsequent operations work exclusively on these hash values, never requiring access to the plaintext. This approach builds upon well-established techniques from probabilistic data structures while adding cryptographic privacy guarantees.
 
-HBOS embodies a \emph{layered privacy model}: the hash representation is \emph{oblivious} (underlying values cannot be recovered), while operations return \emph{Bernoulli Booleans}---plaintext approximate results with explicit error rates. This separation is key to understanding HBOS's guarantees: we hide what the data \emph{is}, but not the pattern of query \emph{results}. The framework draws on Bernoulli type theory~\cite{bernoulli-types}, which provides systematic error propagation rules for composed approximate operations.
+HBTS embodies a \emph{layered privacy model}: the hash representation is a \emph{trapdoor} (underlying values cannot be recovered), while operations return \emph{Bernoulli Booleans}---plaintext approximate results with explicit error rates. This separation is key to understanding HBTS's guarantees: we hide what the data \emph{is}, but not the pattern of query \emph{results}. The framework draws on Bernoulli type theory~\cite{bernoulli-types}, which provides systematic error propagation rules for composed approximate operations.
 
 \subsection{Motivating Example}
 
 Consider a healthcare consortium where multiple hospitals need to identify patients enrolled in overlapping clinical trials without revealing their complete patient lists. Traditional approaches would require either: (1) a trusted third party to perform the intersection, violating privacy requirements, (2) homomorphic encryption with prohibitive computational costs, or (3) complex MPC protocols requiring multiple rounds of communication.
 
-Using HBOS, each hospital can:
+Using HBTS, each hospital can:
 \begin{enumerate}
 \item Transform patient identifiers using a shared cryptographic hash function
 \item Perform set intersection directly on hash values
@@ -94,7 +95,7 @@ Using HBOS, each hospital can:
 \item Complete the entire operation in milliseconds rather than minutes
 \end{enumerate}
 
-This example illustrates HBOS's key advantage: practical performance with quantifiable privacy guarantees.
+This example illustrates HBTS's key advantage: practical performance with quantifiable privacy guarantees.
 
 \subsection{Contributions}
 
@@ -107,14 +108,14 @@ This paper makes the following contributions:
 
 \item \textbf{Integration of Existing Techniques}: We show how established algorithms (Bloom filters, HyperLogLog) can be enhanced with cryptographic privacy guarantees through systematic application of hash transformations.
 
-\item \textbf{Real-World Applications}: We validate HBOS through implementations of private set intersection, secure deduplication, and federated learning aggregation, demonstrating practical utility where approximate results are acceptable.
+\item \textbf{Real-World Applications}: We validate HBTS through implementations of private set intersection, secure deduplication, and federated learning aggregation, demonstrating practical utility where approximate results are acceptable.
 
 \item \textbf{Security Analysis}: We provide formal analysis showing that privacy is bounded by the collision probability of the underlying hash function, with explicit quantification of error rates.
 \end{itemize}
 
 \subsection{Paper Organization}
 
-The remainder of this paper is organized as follows. Section~\ref{sec:background} provides background on cryptographic hash functions, Bernoulli Booleans, and threat model. Section~\ref{sec:design} presents the HBOS framework design, including the layered privacy model distinguishing oblivious representation from Bernoulli query results. Section~\ref{sec:theory} develops the mathematical foundations and security analysis. Section~\ref{sec:implementation} describes our implementation and optimization techniques. Section~\ref{sec:evaluation} evaluates performance and security properties. Section~\ref{sec:applications} explores applications across multiple domains. Section~\ref{sec:related} discusses related work. Section~\ref{sec:conclusion} concludes.
+The remainder of this paper is organized as follows. Section~\ref{sec:background} provides background on cryptographic hash functions, Bernoulli Booleans, and threat model. Section~\ref{sec:design} presents the HBTS framework design, including the layered privacy model distinguishing trapdoor representation from Bernoulli query results. Section~\ref{sec:theory} develops the mathematical foundations and security analysis. Section~\ref{sec:implementation} describes our implementation and optimization techniques. Section~\ref{sec:evaluation} evaluates performance and security properties. Section~\ref{sec:applications} explores applications across multiple domains. Section~\ref{sec:related} discusses related work. Section~\ref{sec:conclusion} concludes.
 
 \section{Background and Threat Model}
 \label{sec:background}
@@ -135,11 +136,11 @@ Given $x_1$, finding $x_2 \neq x_1$ such that $H(x_1) = H(x_2)$ requires $O(2^n)
 Finding any pair $(x_1, x_2)$ where $x_1 \neq x_2$ and $H(x_1) = H(x_2)$ requires $O(2^{n/2})$ operations.
 \end{definition}
 
-HBOS leverages these properties to create one-way transformations that preserve equality testing probabilistically while preventing recovery of original values.
+HBTS exploits these properties to create one-way transformations that preserve equality testing probabilistically while preventing recovery of original values.
 
 \subsection{Approximate Data Structures}
 
-Approximate data structures trade perfect accuracy for improved space or time complexity. The canonical example is the Bloom filter~\cite{bloom1970space}, which supports membership queries with false positives but no false negatives. HBOS builds upon these well-established techniques, adding cryptographic privacy through hash transformations while maintaining explicit error bounds.
+Approximate data structures trade perfect accuracy for improved space or time complexity. The canonical example is the Bloom filter~\cite{bloom1970space}, which supports membership queries with false positives but no false negatives. HBTS builds upon these well-established techniques, adding cryptographic privacy through hash transformations while maintaining explicit error bounds.
 
 \begin{definition}[Approximate Boolean]
 An approximate Boolean value is a tuple $(v, \alpha, \beta)$ where $v \in \{\mathsf{true}, \mathsf{false}\}$ is the observed value, $\alpha$ is the false positive rate (probability of observing true when latent value is false), and $\beta$ is the false negative rate (probability of observing false when latent value is true).
@@ -152,7 +153,7 @@ A \emph{Bernoulli Boolean} $\Bernoulli{\Bool}$ is an observed boolean $\obs{b}$ 
 \item $\fpr = \mathbb{P}[\obs{b} = \mathsf{true} \mid b = \mathsf{false}]$ (false positive rate)
 \item $\fnr = \mathbb{P}[\obs{b} = \mathsf{false} \mid b = \mathsf{true}]$ (false negative rate)
 \end{itemize}
-We distinguish \emph{second-order} Bernoulli Booleans where $\fpr \neq \fnr$ (asymmetric errors, as in Bloom filters and hash-based membership) from \emph{first-order} where $\fpr = \fnr$ (symmetric errors). HBOS produces second-order Bernoulli Booleans with $\fpr = 2^{-n}$ (hash collision) and $\fnr = 0$ (no false negatives).
+We distinguish \emph{second-order} Bernoulli Booleans where $\fpr \neq \fnr$ (asymmetric errors, as in Bloom filters and hash-based membership) from \emph{first-order} where $\fpr = \fnr$ (symmetric errors). HBTS produces second-order Bernoulli Booleans with $\fpr = 2^{-n}$ (hash collision) and $\fnr = 0$ (no false negatives).
 \end{definition}
 
 \begin{definition}[Confusion Matrix]
@@ -165,11 +166,11 @@ where $\ConfMat_{ij} = \mathbb{P}[\obs{b} = j \mid b = i]$ gives the probability
 \item \textbf{Rank-1 matrix} ($\fpr + \fnr = 1$): complete information loss, optimal privacy
 \item \textbf{Rank-2 matrix} ($\fpr + \fnr < 1$): information preserved, privacy/utility trade-off
 \end{itemize}
-For HBOS with $\fpr = 2^{-n}$ and $\fnr = 0$, the confusion matrix is nearly identity---high utility but query results are observable (the ``concession'' discussed in Section~\ref{sec:layered-privacy}).
+For HBTS with $\fpr = 2^{-n}$ and $\fnr = 0$, the confusion matrix is nearly identity---high utility but query results are observable (the ``concession'' discussed in Section~\ref{sec:layered-privacy}).
 \end{definition}
 
 \begin{remark}[Latent vs. Observed Values]
-We distinguish \emph{latent} values (true mathematical objects, denoted $b, S, f$) from \emph{observed} values (computed approximations with error rates, denoted $\obs{b}, \obs{S}, \obs{f}$). This duality is fundamental: HBOS operates entirely on observed values while reasoning about their relationship to latent values through error bounds.
+We distinguish \emph{latent} values (true mathematical objects, denoted $b, S, f$) from \emph{observed} values (computed approximations with error rates, denoted $\obs{b}, \obs{S}, \obs{f}$). This duality is fundamental: HBTS operates entirely on observed values while reasoning about their relationship to latent values through error bounds.
 \end{remark}
 
 \subsection{Threat Model}
@@ -194,19 +195,19 @@ We explicitly exclude:
 
 \subsection{Core Abstractions}
 
-HBOS is built around three core abstractions that compose to enable complex privacy-preserving operations:
+HBTS is built around three core abstractions that compose to enable complex privacy-preserving operations:
 
-\subsubsection{Hash-Oblivious Values}
+\subsubsection{Hash-Trapdoor Values}
 
-A hash-oblivious value encapsulates the one-way transformation of sensitive data through cryptographic hashing. The key insight is that equality testing on hash values preserves the equality relation probabilistically while preventing recovery of original values. For equality testing, the false positive rate (reporting equality when values differ) equals the hash collision probability (e.g., $2^{-256}$ for SHA-256). Note that this bounds \emph{collision errors}, not privacy---privacy depends on input entropy and resistance to dictionary attacks. Implementation details are provided in Appendix A.
+A hash-trapdoor value encapsulates the one-way transformation of sensitive data through cryptographic hashing. The key insight is that equality testing on hash values preserves the equality relation probabilistically while preventing recovery of original values. For equality testing, the false positive rate (reporting equality when values differ) equals the hash collision probability (e.g., $2^{-256}$ for SHA-256). Note that this bounds \emph{collision errors}, not privacy---privacy depends on input entropy and resistance to dictionary attacks. Implementation details are provided in Appendix A.
 
 \subsubsection{Approximate Values}
 
-All operations in HBOS return approximate values with explicit error rates. Each approximate value maintains both the computed result and its associated false positive and false negative rates. This design makes uncertainty explicit and enables informed decision-making about accuracy-privacy trade-offs. When $\alpha + \beta \leq 1$, the confidence in a result equals $1 - \alpha - \beta$ where $\alpha$ and $\beta$ are the false positive and negative rates respectively.
+All operations in HBTS return approximate values with explicit error rates. Each approximate value maintains both the computed result and its associated false positive and false negative rates. This design makes uncertainty explicit and enables informed decision-making about accuracy-privacy trade-offs. When $\alpha + \beta \leq 1$, the confidence in a result equals $1 - \alpha - \beta$ where $\alpha$ and $\beta$ are the false positive and negative rates respectively.
 
 \subsubsection{Set Operations}
 
-HBOS provides two primary set implementations with different algebraic properties:
+HBTS provides two primary set implementations with different algebraic properties:
 
 \textbf{Boolean Sets} support full Boolean algebra:
 \begin{itemize}
@@ -226,7 +227,7 @@ HBOS provides two primary set implementations with different algebraic propertie
 
 \subsection{Error Propagation}
 
-A key aspect of HBOS is systematic error propagation through operations. For Boolean operations, we derive tight bounds:
+A key aspect of HBTS is systematic error propagation through operations. For Boolean operations, we derive tight bounds:
 
 \begin{theorem}[Union Error Bound]
 For sets $A$ and $B$ with false positive rates $\alpha_A, \alpha_B$ and false negative rates $\beta_A, \beta_B$:
@@ -276,20 +277,20 @@ For $t$-fold composition of independent Bernoulli Booleans each with FPR $\fpr$:
 Dually, for FNR $\fnr$: $t$-fold AND accumulates as $\fnr_{\text{total}} = 1 - (1-\fnr)^t$, and $t$-fold OR reduces as $\fnr_{\text{total}} = \fnr^t$.
 \end{corollary}
 
-\subsection{Layered Privacy: Oblivious Representation, Bernoulli Results}
+\subsection{Layered Privacy: Trapdoor Representation, Bernoulli Results}
 \label{sec:layered-privacy}
 
-HBOS exhibits a layered privacy model combining two distinct mechanisms: \emph{oblivious representation} through one-way hash transformations, and \emph{Bernoulli query results} that are plaintext but approximate. Understanding this layered structure is essential for correctly reasoning about HBOS's privacy guarantees.
+HBTS exhibits a layered privacy model combining two distinct mechanisms: \emph{trapdoor representation} through one-way hash transformations, and \emph{Bernoulli query results} that are plaintext but approximate. Understanding this layered structure is essential for correctly reasoning about HBTS's privacy guarantees.
 
-\subsubsection{Oblivious Representation Layer}
+\subsubsection{Trapdoor Representation Layer}
 
-The hash transformation $T_k(v) = H(k \| v)$ creates an \emph{oblivious representation}: inspecting a hash value reveals nothing about the underlying data beyond what can be learned through defined operations. This provides:
+The hash transformation $T_k(v) = H(k \| v)$ creates a \emph{trapdoor representation}: inspecting a hash value reveals nothing about the underlying data beyond what can be learned through defined operations. This provides:
 \begin{itemize}
 \item \textbf{Preimage resistance}: Cannot recover $v$ from $T_k(v)$ without exhaustive search
 \item \textbf{Key-dependent hiding}: Without knowledge of $k$, an adversary cannot verify membership guesses
 \item \textbf{Representation uniformity}: Hash values appear uniformly random, hiding structural properties of inputs
 \end{itemize}
-The representation layer is what makes HBOS ``oblivious''---the hash values themselves reveal nothing about the original data.
+The representation layer is the trapdoor at the heart of HBTS---the hash values themselves reveal nothing about the original data.
 
 \subsubsection{Bernoulli Query Layer}
 
@@ -302,7 +303,7 @@ Operations on hash values return \emph{Bernoulli Booleans}---plaintext approxima
 
 \begin{remark}[The Concession]
 \label{rem:concession}
-While representation is oblivious, \emph{query results are observable}. A fully oblivious system would hide even the pattern of true/false results (as in oblivious RAM~\cite{oset}). HBOS trades this stronger property for practical efficiency---suitable when query results are already shared (e.g., private set intersection reveals intersection members) or when the pattern of results is not sensitive.
+While the trapdoor hides the underlying data, \emph{query results are observable}. A fully access-pattern-hiding system would conceal even the pattern of true/false results (as in oblivious RAM~\cite{oset}). HBTS trades this stronger property for practical efficiency---suitable when query results are already shared (e.g., private set intersection reveals intersection members) or when the pattern of results is not sensitive.
 \end{remark}
 
 \subsubsection{Hash Values as Bernoulli Set Carriers}
@@ -316,7 +317,7 @@ This asymmetry ($\fpr > 0$, $\fnr = 0$) is characteristic of hash-based data str
 
 \subsection{Architecture}
 
-HBOS follows a layered architecture as shown in Figure~\ref{fig:architecture}:
+HBTS follows a layered architecture as shown in Figure~\ref{fig:architecture}:
 
 \begin{figure}[h]
 \centering
@@ -332,13 +333,13 @@ HBOS follows a layered architecture as shown in Figure~\ref{fig:architecture}:
 (Boolean Algebra, Symmetric Difference) \\
 \hline
 \textbf{Core Primitives} \\
-(Hash-Oblivious Values, Approximate Types) \\
+(Hash-Trapdoor Values, Approximate Types) \\
 \hline
 \textbf{Cryptographic Layer} \\
 (SHA-256, BLAKE2b, etc.) \\
 \hline
 \end{tabular}
-\caption{HBOS layered architecture}
+\caption{HBTS layered architecture}
 \label{fig:architecture}
 \end{figure}
 
@@ -350,7 +351,7 @@ This design enables modularity and allows applications to work at the appropriat
 \subsection{Boolean Algebra Framework}
 \label{sec:boolean-algebra}
 
-HBOS is grounded in a homomorphism between two Boolean algebras: the algebra of sets over arbitrary bit strings, and the algebra of fixed-size bit vectors. This section formalizes this relationship.
+HBTS is grounded in a homomorphism between two Boolean algebras: the algebra of sets over arbitrary bit strings, and the algebra of fixed-size bit vectors. This section formalizes this relationship.
 
 \begin{definition}[Set Boolean Algebra]
 The \emph{set Boolean algebra} is the structure
@@ -425,7 +426,7 @@ which tends to 0 exponentially as $s \to \infty$ (since $\log_2 \alpha(s) \to 0$
 
 \subsection{Security Analysis}
 
-We formalize HBOS's security properties using the random oracle model for hash functions.
+We formalize HBTS's security properties using the random oracle model for hash functions.
 
 \begin{definition}[One-Wayness Game]
 The one-wayness game $\mathcal{G}_{OW}$ between challenger $\mathcal{C}$ and adversary $\mathcal{A}$:
@@ -448,7 +449,7 @@ In the random oracle model, $H(k||x)$ is uniformly distributed over $\{0,1\}^n$.
 
 \subsection{Approximate Algebraic Properties}
 
-HBOS exhibits approximate algebraic properties with explicit error bounds:
+HBTS exhibits approximate algebraic properties with explicit error bounds:
 
 % FIXED: Intersection claim was stated as approximate equality, but bitwise AND
 % actually satisfies F(A) & F(B) \supseteq F(A \cap B) -- the AND can have extra
@@ -562,7 +563,7 @@ This achieves practical FPR for large sets: with $w = 8$, $q = 256$, and $k = 10
 \subsection{Unified Hash Construction}
 \label{sec:unified-hash}
 
-All HBOS operations derive from a general hash-based construction that unifies probabilistic data structures with cryptographic privacy~\cite{bernoulli-types,oblivious-computing}:
+All HBTS operations derive from a general hash-based construction that unifies probabilistic data structures with cryptographic privacy~\cite{bernoulli-types,trapdoor-computing}:
 
 \begin{definition}[Hash-Based Bernoulli Type]
 \label{def:hash-bernoulli}
@@ -578,7 +579,7 @@ The resulting type is a \emph{Bernoulli approximation} of $T$: operations on $\B
 The false positive rate emerges from encoding set sizes: $\fpr = |\ValidEnc{\mathsf{true}}|/2^m$. This unified view reveals that Bloom filters, trapdoor functions, and approximate maps are all instances of the same construction with different encoding strategies:
 \begin{itemize}
 \item \textbf{Bloom filter}: Multiple hash functions create overlapping valid encoding regions, yielding $\fpr = (1 - e^{-kn/m})^k$
-\item \textbf{HBOS trapdoor}: Single keyed hash with $\ValidEnc{\mathsf{true}} = \{H(k \| v)\}$, yielding $\fpr = 2^{-m}$ (collision probability)
+\item \textbf{HBTS trapdoor}: Single keyed hash with $\ValidEnc{\mathsf{true}} = \{H(k \| v)\}$, yielding $\fpr = 2^{-m}$ (collision probability)
 \item \textbf{Approximate maps}: Encoding sizes vary by output value, enabling the 1/p(y) principle for privacy
 \end{itemize}
 
@@ -589,7 +590,7 @@ The same hash construction achieves fundamentally different goals by varying enc
 
 \textbf{Space-Optimal Encoding}: $|\ValidEnc{y}| \propto \text{freq}(y)$ (proportional to frequency). Minimizes expected encoding size but reveals frequency information. Used in compression and space-efficient data structures.
 
-\textbf{Privacy-Optimal Encoding}: $|\ValidEnc{y}| \propto 1/\text{freq}(y)$ (inverse frequency). Achieves uniform output distribution, hiding frequency patterns. This is the \emph{1/p(y) principle} from Bernoulli type theory~\cite{oblivious-computing}---the key insight connecting approximation to privacy.
+\textbf{Privacy-Optimal Encoding}: $|\ValidEnc{y}| \propto 1/\text{freq}(y)$ (inverse frequency). Achieves uniform output distribution, hiding frequency patterns. This is the \emph{1/p(y) principle} from Bernoulli type theory~\cite{trapdoor-computing}---the key insight connecting approximation to privacy.
 
 \begin{theorem}[Uniformity from Inverse-Frequency]
 \label{thm:inverse-freq}
@@ -602,11 +603,11 @@ achieving uniform output distribution without explicit randomization.
 The 1/p(y) principle explains why hash-based constructions achieve privacy: by mapping inputs through a uniform hash function, high-entropy inputs produce uniformly distributed outputs regardless of the original distribution. This is an instance of the more general principle that encoding sizes inversely proportional to frequency yield privacy without explicit randomization.
 \end{remark}
 
-HBOS uses uniform-sized encodings (a middle ground), providing practical privacy at constant space cost per element. Each element receives a fixed-size hash representation, offering computational privacy when the input domain has sufficient entropy.
+HBTS uses uniform-sized encodings (a middle ground), providing practical privacy at constant space cost per element. Each element receives a fixed-size hash representation, offering computational privacy when the input domain has sufficient entropy.
 
 \subsection{Cardinality Estimation}
 
-HBOS incorporates the well-established HyperLogLog algorithm~\cite{flajolet2007hyperloglog} for cardinality estimation on hash-transformed sets. We apply HyperLogLog without modification, leveraging its proven accuracy guarantees:
+HBTS incorporates the well-established HyperLogLog algorithm~\cite{flajolet2007hyperloglog} for cardinality estimation on hash-transformed sets. We apply HyperLogLog without modification, relying on its proven accuracy guarantees:
 
 \begin{algorithm}
 \caption{Cardinality Estimation}
@@ -631,7 +632,7 @@ The algorithm achieves relative error $1.04/\sqrt{m}$ using $O(m \log \log n)$ b
 \section{Implementation}
 \label{sec:implementation}
 
-We implemented HBOS as a header-only C++20 library, leveraging modern language features for type safety and performance. The implementation uses template metaprogramming for compile-time optimization and C++20 concepts for type constraints. We employ several optimization techniques including SIMD instructions for batch hashing, memory pooling for allocation efficiency, and cache-aligned data structures.
+We implemented HBTS as a header-only C++20 library, using modern language features for type safety and performance. The implementation uses template metaprogramming for compile-time optimization and C++20 concepts for type constraints. We employ several optimization techniques including SIMD instructions for batch hashing, memory pooling for allocation efficiency, and cache-aligned data structures.
 
 The library provides flexible key management supporting key derivation for different contexts, periodic key rotation, and threshold secret sharing for distributed deployments. Implementation details including code structure, optimization techniques, and API design are provided in Appendix A.
 
@@ -640,7 +641,7 @@ The library provides flexible key management supporting key derivation for diffe
 
 \subsection{Experimental Setup}
 
-We evaluate HBOS on:
+We evaluate HBTS on:
 \begin{itemize}
 \item Intel Core i9-12900K (16 cores, 24 threads)
 \item 64GB DDR5 RAM
@@ -672,7 +673,7 @@ Jaccard similarity & 2.1 & 0.2 \\
 {\footnotesize $^\dagger$Based on algorithm complexity analysis; formal benchmark validation in progress.}
 \end{table}
 
-HBOS achieves microsecond-scale performance for common operations, making it suitable for real-time applications.
+HBTS achieves microsecond-scale performance for common operations, making it suitable for real-time applications.
 
 \subsection{Scalability Analysis}
 
@@ -702,7 +703,7 @@ We validate security properties through:
 
 \subsection{Limitations and Attack Vectors}
 
-HBOS provides practical privacy but has important limitations that users must understand:
+HBTS provides practical privacy but has important limitations that users must understand:
 
 \textbf{Dictionary Attacks}: For low-entropy input domains (e.g., phone numbers, SSNs, email addresses), an adversary with knowledge of the domain can precompute hashes for all possible values and match against observed trapdoors. Privacy degrades to $O(1/|D|)$ where $|D|$ is the domain size. \emph{Mitigation}: Use high-entropy inputs, apply key stretching (e.g., Argon2), or combine with additional randomization.
 
@@ -712,8 +713,8 @@ HBOS provides practical privacy but has important limitations that users must un
 
 \textbf{Quantum Vulnerability}: Grover's algorithm reduces effective hash security from $n$ bits to $n/2$ bits. For quantum resistance, use 512-bit hashes to maintain 256-bit security.
 
-\begin{remark}[When HBOS is Appropriate]
-HBOS is suitable when: (1) input domains have high entropy, (2) dictionary attacks are infeasible, (3) frequency patterns are acceptable leakage, or (4) approximate plausible deniability suffices. For stronger guarantees, consider FHE or MPC despite their performance costs.
+\begin{remark}[When HBTS is Appropriate]
+HBTS is suitable when: (1) input domains have high entropy, (2) dictionary attacks are infeasible, (3) frequency patterns are acceptable leakage, or (4) approximate plausible deniability suffices. For stronger guarantees, consider FHE or MPC despite their performance costs.
 \end{remark}
 
 \subsection{Comparison with Alternatives}
@@ -726,7 +727,7 @@ HBOS is suitable when: (1) input domains have high entropy, (2) dictionary attac
 \toprule
 System & Privacy Model & Dictionary Resistant & Performance & Accuracy \\
 \midrule
-HBOS & Preimage & No$^*$ & $\mu$s & Approximate \\
+HBTS & Preimage & No$^*$ & $\mu$s & Approximate \\
 FHE & Semantic & Yes & s & Exact \\
 MPC & Simulation & Yes & ms & Exact \\
 Bloom Filters & None & N/A & $\mu$s & Approximate \\
@@ -737,14 +738,14 @@ Bloom Filters & None & N/A & $\mu$s & Approximate \\
 {\footnotesize $^*$Vulnerable when input domain has low entropy}
 \vspace{0.5em}
 
-HBOS occupies a practical niche: it provides preimage-based privacy with microsecond performance, suitable for high-entropy domains where dictionary attacks are infeasible.
+HBTS occupies a practical niche: it provides preimage-based privacy with microsecond performance, suitable for high-entropy domains where dictionary attacks are infeasible.
 
 \section{Applications}
 \label{sec:applications}
 
 \subsection{Private Set Intersection}
 
-HBOS enables efficient PSI without revealing non-matching elements. Using hash-table based intersection, HBOS achieves $O(n)$ complexity with $O(n)$ space, matching the best non-private approaches. The key advantage is that operations occur entirely in the hash domain---the false positive rate for membership is bounded by hash collision probability, while the underlying values remain computationally hidden.
+HBTS enables efficient PSI without revealing non-matching elements. Using hash-table based intersection, HBTS achieves $O(n)$ complexity with $O(n)$ space, matching the best non-private approaches. The key advantage is that operations occur entirely in the hash domain---the false positive rate for membership is bounded by hash collision probability, while the underlying values remain computationally hidden.
 
 \subsection{Secure Deduplication}
 
@@ -767,7 +768,7 @@ Cloud storage providers can identify duplicate files without accessing content:
 
 \subsection{Privacy-Preserving Analytics}
 
-HBOS supports various analytical operations on hash-transformed data:
+HBTS supports various analytical operations on hash-transformed data:
 
 \textbf{Histogram Generation}: Count occurrences without revealing underlying values, useful for distribution analysis while preserving privacy.
 
@@ -777,7 +778,7 @@ HBOS supports various analytical operations on hash-transformed data:
 
 \subsection{Federated Learning}
 
-HBOS supports secure aggregation in federated learning by allowing participants to submit hash-transformed model updates. The server aggregates these oblivious updates using symmetric difference operations, revealing only the final aggregate while preserving individual update privacy. This approach is particularly effective when combined with differential privacy for additional statistical guarantees.
+HBTS supports secure aggregation in federated learning by allowing participants to submit hash-transformed model updates. The server aggregates these trapdoor-preserving updates using symmetric difference operations, revealing only the final aggregate while preserving individual update privacy. This approach is particularly effective when combined with differential privacy for additional statistical guarantees.
 
 \section{Related Work}
 \label{sec:related}
@@ -785,33 +786,33 @@ HBOS supports secure aggregation in federated learning by allowing participants 
 \subsection{Homomorphic Encryption}
 
 Fully homomorphic encryption (FHE) enables arbitrary computation on encrypted data. Since Gentry's breakthrough~\cite{gentry2009fully}, significant progress has been made in practical FHE systems. TFHE~\cite{chillotti2020tfhe} and CKKS~\cite{cheon2017homomorphic} achieve sub-second bootstrapping, % FIXED (BA-1): Brakerski year corrected from 2022 to 2012.
-while Brakerski's FHE without modulus switching~\cite{brakerski2012fully} simplifies implementation. However, FHE still incurs 1000-10000× overhead for general computation. Partially homomorphic schemes like Paillier~\cite{paillier1999public} offer better performance but support only specific operations. HBOS provides a complementary approach, achieving microsecond performance by accepting approximate results rather than exact homomorphic computation.
+while Brakerski's FHE without modulus switching~\cite{brakerski2012fully} simplifies implementation. However, FHE still incurs 1000-10000× overhead for general computation. Partially homomorphic schemes like Paillier~\cite{paillier1999public} offer better performance but support only specific operations. HBTS provides a complementary approach, achieving microsecond performance by accepting approximate results rather than exact homomorphic computation.
 
 \subsection{Secure Multi-Party Computation}
 
-MPC protocols enable joint computation without revealing inputs. Classical protocols~\cite{yao1982protocols, goldreich1987play} laid theoretical foundations, while modern frameworks have made MPC practical. MP-SPDZ~\cite{keller2020mp} provides a comprehensive toolkit supporting multiple protocols, while ABY3~\cite{mohassel2018aby3} achieves efficient three-party computation. Recent advances in silent OT~\cite{boyle2022cheaper} and function secret sharing~\cite{boyle2021function} have reduced communication complexity. However, MPC still requires multiple rounds of interaction and coordination between parties. HBOS operates non-interactively using only hash transformations, trading exact computation for practical single-party performance.
+MPC protocols enable joint computation without revealing inputs. Classical protocols~\cite{yao1982protocols, goldreich1987play} laid theoretical foundations, while modern frameworks have made MPC practical. MP-SPDZ~\cite{keller2020mp} provides a comprehensive toolkit supporting multiple protocols, while ABY3~\cite{mohassel2018aby3} achieves efficient three-party computation. Recent advances in silent OT~\cite{boyle2022cheaper} and function secret sharing~\cite{boyle2021function} have reduced communication complexity. However, MPC still requires multiple rounds of interaction and coordination between parties. HBTS operates non-interactively using only hash transformations, trading exact computation for practical single-party performance.
 
 \subsection{Private Set Intersection}
 
 PSI protocols have evolved significantly since early work~\cite{meadows1986more, freedman2004efficient}. Modern protocols achieve remarkable efficiency: OPRF-based PSI~\cite{raghuraman2022blazing} handles billion-element sets, while circuit-PSI~\cite{chandran2022circuit} enables arbitrary computations on intersection results. % FIXED (BA-1): chen2022blazing was a duplicate of raghuraman2022blazing with fabricated
 % authors. Replaced with Chen et al. 2017 (actual unbalanced PSI work using HE).
-Unbalanced PSI~\cite{chen2017unbalanced} optimizes for asymmetric set sizes common in practice. Recent work on PSI from pseudorandom correlation generators~\cite{schoppmann2023psi} achieves optimal communication. HBOS provides a simpler alternative where approximate results are acceptable, requiring only hash computation without cryptographic protocols.
+Unbalanced PSI~\cite{chen2017unbalanced} optimizes for asymmetric set sizes common in practice. Recent work on PSI from pseudorandom correlation generators~\cite{schoppmann2023psi} achieves optimal communication. HBTS provides a simpler alternative where approximate results are acceptable, requiring only hash computation without cryptographic protocols.
 
 \subsection{Approximate Data Structures}
 
 Probabilistic data structures trade accuracy for efficiency. Bloom filters~\cite{bloom1970space} pioneered this approach for membership testing. Cuckoo filters~\cite{fan2014cuckoo} improve on Bloom filters by supporting deletions. % FIXED (BA-1): ting2020count had fabricated arXiv ID (2005.14165 = GPT-3 paper).
 % Replaced with Ting's actual cardinality estimation work (KDD 2014).
-Count-Min sketches~\cite{cormode2005improved} and streamed cardinality estimation~\cite{ting2014streamed} enable frequency and cardinality estimation. Recent work includes learned Bloom filters~\cite{kraska2018case} using machine learning to optimize performance, and XOR filters~\cite{graf2020xor} achieving near-optimal space efficiency. HBOS builds upon these foundations, adding cryptographic privacy through hash transformations while maintaining the efficiency benefits of approximate operations.
+Count-Min sketches~\cite{cormode2005improved} and streamed cardinality estimation~\cite{ting2014streamed} enable frequency and cardinality estimation. Recent work includes learned Bloom filters~\cite{kraska2018case} using machine learning to optimize performance, and XOR filters~\cite{graf2020xor} achieving near-optimal space efficiency. HBTS builds upon these foundations, adding cryptographic privacy through hash transformations while maintaining the efficiency benefits of approximate operations.
 
 \subsection{Differential Privacy}
 
 Differential privacy (DP)~\cite{dwork2006calibrating} provides statistical privacy guarantees through calibrated noise addition. The field has matured significantly with deployment at major tech companies~\cite{erlingsson2014rappor, apple2017differential}. % FIXED (BA-1): McSherry year corrected from 2021 to 2007; Bonawitz year corrected from 2021 to 2017.
-Recent advances include mechanism design via differential privacy~\cite{mcsherry2007exponential}, concentrated DP~\cite{bun2016concentrated} for tighter privacy accounting, and shuffle DP~\cite{erlingsson2019amplification} amplifying privacy through anonymization. Practical secure aggregation~\cite{bonawitz2017practical} enables federated learning at scale. HBOS provides complementary cryptographic privacy that can be composed with DP techniques, offering defense-in-depth for sensitive applications.
+Recent advances include mechanism design via differential privacy~\cite{mcsherry2007exponential}, concentrated DP~\cite{bun2016concentrated} for tighter privacy accounting, and shuffle DP~\cite{erlingsson2019amplification} amplifying privacy through anonymization. Practical secure aggregation~\cite{bonawitz2017practical} enables federated learning at scale. HBTS provides complementary cryptographic privacy that can be composed with DP techniques, offering defense-in-depth for sensitive applications.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented Hash-Based Oblivious Sets (HBOS), a practical framework for privacy-preserving set operations that combines cryptographic hash functions with probabilistic data structures. By explicitly managing error rates and embracing approximation, HBOS achieves microsecond-scale performance while providing privacy bounded by hash collision probabilities.
+We presented Hash-Based Trapdoor Sets (HBTS), a practical framework for privacy-preserving set operations that combines cryptographic hash functions with probabilistic data structures. By explicitly managing error rates and embracing approximation, HBTS achieves microsecond-scale performance while providing privacy bounded by hash collision probabilities.
 
 Our contributions include:
 \begin{itemize}
@@ -824,7 +825,7 @@ Our contributions include:
 Future directions include:
 \begin{itemize}
 \item Integration with post-quantum hash functions for quantum resistance
-\item Hardware acceleration leveraging AES-NI and SHA extensions
+\item Hardware acceleration via AES-NI and SHA extensions
 \item Composition with differential privacy for enhanced protection
 \item Formal verification of implementation correctness
 \end{itemize}
@@ -844,7 +845,7 @@ The current implementation provides core trapdoor and set operations. The follow
 
 \noindent Performance figures in this paper are based on algorithm complexity analysis and microbenchmark design; comprehensive benchmarking with validated measurements is ongoing.
 
-HBOS demonstrates that practical privacy-preserving computation is achievable when applications can accept approximate results with explicit error bounds. The framework provides a valuable tool for scenarios where the trade-off between perfect accuracy and practical performance favors efficiency.
+HBTS demonstrates that practical privacy-preserving computation is achievable when applications can accept approximate results with explicit error bounds. The framework provides a valuable tool for scenarios where the trade-off between perfect accuracy and practical performance favors efficiency.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
@@ -853,22 +854,22 @@ HBOS demonstrates that practical privacy-preserving computation is achievable wh
 
 \section{Implementation Details}
 
-This appendix provides implementation details for the HBOS framework that were omitted from the main text for clarity.
+This appendix provides implementation details for the HBTS framework that were omitted from the main text for clarity.
 
 \subsection{Core Data Structures}
 
-\subsubsection{Hash-Oblivious Value Implementation}
+\subsubsection{Hash-Trapdoor Value Implementation}
 
-The hash-oblivious value class encapsulates the one-way transformation:
+The hash-trapdoor value class encapsulates the one-way transformation:
 
-\begin{lstlisting}[caption={Hash-oblivious value implementation}]
+\begin{lstlisting}[caption={Hash-trapdoor value implementation}]
 template <typename T, size_t N = 32>
-class hash_oblivious {
+class hash_trapdoor {
   hash_value<N> value_hash_;
   size_t key_fingerprint_;
 public:
   approximate_bool equals(
-    const hash_oblivious& other) const {
+    const hash_trapdoor& other) const {
     bool same = (value_hash_ ==
                  other.value_hash_);
     double fpr = pow(2.0, -N*8);
@@ -993,7 +994,7 @@ concept Hashable = requires(T t) {
 };
 
 template <typename T>
-concept ObliviousSet = requires(T t) {
+concept TrapdoorSet = requires(T t) {
   typename T::value_type;
   { t.insert(std::declval<
     typename T::value_type>()) };
@@ -1005,10 +1006,10 @@ concept ObliviousSet = requires(T t) {
 
 \subsection{Parallel Execution}
 
-Leveraging C++20 parallel algorithms:
+Using C++20 parallel algorithms:
 
 \begin{lstlisting}[caption={Parallel set operations}]
-template <ObliviousSet S>
+template <TrapdoorSet S>
 auto parallel_union(const S& a, const S& b) {
   S result;
   std::for_each(
