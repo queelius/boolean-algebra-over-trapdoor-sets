@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this software or reference this work, please cite it as below."
+message: "If you reference this work, please cite it as below."
 title: "Boolean Algebra over Trapdoor Sets: A Practical Framework for Privacy-Preserving Set Operations with Probabilistic Guarantees"
 type: software
 authors:
@@ -7,22 +7,23 @@ authors:
     given-names: Alexander
     email: atowell@siue.edu
     affiliation: "Southern Illinois University Edwardsville"
-repository-code: "https://github.com/queelius/oblivious-computing"
+repository-code: "https://github.com/queelius/boolean-algebra-over-trapdoor-sets"
 abstract: >-
-  Hash-Based Oblivious Sets (HBOS) is a practical framework for privacy-preserving
-  set operations that combines cryptographic hash functions with probabilistic data
-  structures. Unlike traditional approaches using fully homomorphic encryption or
-  secure multi-party computation, HBOS achieves microsecond-scale performance by
-  embracing approximate operations with explicitly managed error rates.
+  A framework for privacy-preserving set operations built from cryptographic
+  trapdoors. A trapdoor set holds opaque, deterministic element trapdoors and
+  supports a collision-bounded generalized Boolean algebra (union and intersection
+  negatives) while answering membership as a plaintext boolean by byte-equality.
+  It never recovers plaintext; what it exposes is the equality predicate among
+  ciphertexts (the deterministic-encryption / searchable-encryption leakage
+  profile), trading that leak for set operations whose only error is a hash collision.
 keywords:
   - cryptographic hash functions
-  - oblivious data structures
+  - trapdoor data structures
   - privacy-preserving computation
   - approximate algorithms
   - probabilistic data structures
   - Bernoulli types
 license: MIT
-version: 0.5.0
 date-released: 2025-01-25
 preferred-citation:
   type: article
@@ -34,8 +35,8 @@ preferred-citation:
       affiliation: "Southern Illinois University Edwardsville"
   year: 2025
   abstract: >-
-    We present Hash-Based Oblivious Sets (HBOS), a practical framework for
-    privacy-preserving set operations that combines cryptographic hash functions
-    with probabilistic data structures. HBOS provides oblivious representation
-    through one-way hash transformations while operations return Bernoulli
-    Booleans with explicit error rates.
+    A framework for privacy-preserving set operations built from cryptographic
+    trapdoors. The trapdoor set supports a collision-bounded generalized Boolean
+    algebra over opaque element trapdoors while answering membership as a plaintext boolean by
+    byte-equality, exposing the equality predicate among ciphertexts rather than
+    any plaintext value.

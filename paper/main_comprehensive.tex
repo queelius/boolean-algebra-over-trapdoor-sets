@@ -1,3 +1,4 @@
+% SIMPLIFIED: Notation reduction pass (2026-03-25)
 % REFRAMED: Replaced "oblivious" with "trapdoor" throughout (2026-03-22)
 \documentclass[10pt,conference]{IEEEtran}
 \IEEEoverridecommandlockouts
@@ -18,7 +19,7 @@
 
 % Code listing settings
 \lstset{
-  language=C++,
+  language=Python,
   basicstyle=\footnotesize\ttfamily,
   keywordstyle=\color{blue},
   commentstyle=\color{gray},
@@ -35,13 +36,13 @@
 \newtheorem{lemma}[theorem]{Lemma}
 \newtheorem{definition}[theorem]{Definition}
 \newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
 \newtheorem{remark}[theorem]{Remark}
 
 % Unified notation (following Bernoulli types framework)
 \newcommand{\fpr}{\alpha}                   % False positive rate
 \newcommand{\fnr}{\beta}                    % False negative rate
 \newcommand{\obs}[1]{\tilde{#1}}            % Observed/approximate value
-\newcommand{\lat}[1]{#1}                    % Latent/true value
 \newcommand{\Bool}{\mathbb{B}}              % Boolean type
 \newcommand{\Bernoulli}[1]{\mathcal{B}\langle #1 \rangle}  % Bernoulli type
 % \Oblivious macro removed during trapdoor reframing (was unused)
@@ -60,13 +61,11 @@ Email: atowell@siue.edu}}
 \maketitle
 
 \begin{abstract}
-We present Hash-Based Trapdoor Sets (HBTS), a practical framework for privacy-preserving set operations that combines cryptographic hash functions with probabilistic data structures. Unlike traditional approaches using fully homomorphic encryption or secure multi-party computation, HBTS achieves microsecond-scale performance by embracing approximate operations with explicitly managed error rates.
+We study the \emph{trapdoor set}: a set whose elements are opaque, deterministic one-way trapdoors\footnote{We use ``trapdoor'' to mean a one-way encoding keyed by a secret, not a trapdoor permutation in the standard cryptographic sense. The key $k$ enables creation of encodings $T_k(v) = H(k \| v)$ but does not permit recovery of inputs---there is no efficient inversion.}, on which an untrusted party computes union, intersection, and difference directly over the opaque encodings. Membership is answered by equality of encodings, returning a plaintext boolean. The construction never recovers plaintext; what it exposes is the \emph{equality predicate} among encodings---the leakage profile of deterministic and searchable encryption. Its only source of error is a hash collision: every operation has no false negatives and a false-positive rate bounded by the collision probability $|S|\,2^{-n}$, with no other approximation.
 
-HBTS provides \emph{trapdoor representation} through one-way hash transformations---the underlying data cannot be recovered from hash values. Operations return \emph{Bernoulli Booleans}: plaintext approximate results with explicit error rates (false positive rate $\alpha$, false negative rate $\beta$). This layered model accepts observable query results in exchange for practical efficiency, making it suitable for applications where query patterns are not sensitive or results are shared.
+Two parameters fix the construction's position on its trade-offs. A \emph{representation} choice trades space for accuracy: a literal set of element trapdoors keeps every operation collision-bounded in $O(k)$ space, whereas a compact fixed-width encoding (the image of a single-hash Bloom filter) saves space but makes intersection \emph{structurally} approximate---wrong even absent collisions---and cannot preserve complement. Indeed, under either representation the finite trapdoor sets form a \emph{generalized} Boolean algebra (a Boolean ring without unit) rather than a Boolean algebra: the complement of a finite set is not finitely representable. A \emph{homophony} parameter $K(x)$, the number of encodings per value, fixes confidentiality: $K = 1$ (deterministic) opens the equality channel and admits the untrusted-side algebra studied here, while $K > 1$ closes that channel and yields the opaque, trusted-decode regime of the cipher-map framework that this construction instantiates as its online case.
 
-Our framework provides: (1) a systematic approach to propagating error bounds through composed set operations using Bernoulli type composition rules, (2) efficient Boolean and symmetric difference operations on hash-transformed data with quantifiable false positive rates, and (3) practical implementations of privacy-preserving primitives including private set intersection and secure aggregation. We build upon established techniques from probabilistic data structures (Bloom filters, HyperLogLog) while adding cryptographic privacy through one-way hash transformations.
-
-Experimental evaluation demonstrates that HBTS operations complete in 0.4-2.1 microseconds for typical workloads, offering 1000-10000× speedup over homomorphic encryption approaches. The framework provides false positive rates bounded by hash collision probability (e.g., $2^{-256}$ for SHA-256), with privacy guarantees that depend on input entropy and threat model assumptions. We validate HBTS through implementations of private set intersection, secure deduplication, and federated learning aggregation, showing practical applicability where approximate results with explicit error bounds are acceptable.
+We give systematic error-propagation rules for composed operations, the corresponding size-dependent false-positive analysis, and a reference implementation backing the claims. Because operations reduce to hashing and set operations rather than homomorphic evaluation or multi-round interaction, the trapdoor set avoids the overhead of fully homomorphic encryption and secure multi-party computation; we position it against those alternatives and, most closely, against searchable symmetric encryption.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -77,74 +76,50 @@ cryptographic hash functions, trapdoor data structures, privacy-preserving compu
 
 The proliferation of cloud computing and data analytics has created an urgent need for privacy-preserving computational frameworks that enable operations on sensitive data without exposing the underlying values. Traditional approaches to this problem fall into two categories: cryptographic techniques such as fully homomorphic encryption (FHE)~\cite{gentry2009fully} and secure multi-party computation (MPC)~\cite{yao1982protocols}, and statistical techniques such as differential privacy~\cite{dwork2006calibrating}. While powerful, these approaches often suffer from computational overhead that limits their practical deployment.
 
-We present Hash-Based Trapdoor Sets (HBTS), a practical framework that achieves efficient privacy-preserving set operations by combining cryptographic hash functions with probabilistic data structures. Our approach differs from existing solutions by explicitly embracing approximation, making error rates transparent throughout the computational pipeline. This design choice enables HBTS to achieve microsecond-scale performance while providing privacy bounded by hash collision probabilities.
+We study the \emph{trapdoor set}: a set whose elements are deterministic one-way encodings $T_k(v) = H(k \| v)$. Because equal values produce equal encodings, an untrusted party can compute union, intersection, difference, and membership directly over the opaque elements without ever recovering a plaintext value. The cost of this efficiency is precise and bounded: the construction exposes the \emph{equality predicate} among encodings---the leakage profile of deterministic and searchable symmetric encryption---and its only computational error is a hash collision.
 
-The core insight underlying HBTS is that many real-world applications can tolerate controlled error rates in exchange for efficiency and privacy. By using cryptographic hash functions as one-way transformations, we map sensitive data into a hash domain where equality testing is preserved probabilistically while the original values remain computationally hidden. All subsequent operations work exclusively on these hash values, never requiring access to the plaintext. This approach builds upon well-established techniques from probabilistic data structures while adding cryptographic privacy guarantees.
+The core insight is that many applications can tolerate controlled error rates in exchange for efficiency and privacy. Cryptographic hash functions serve as one-way transformations: sensitive data is mapped into a hash domain where equality testing is preserved probabilistically while original values remain computationally hidden. All subsequent operations work exclusively on hash values, never requiring access to plaintext.
 
-HBTS embodies a \emph{layered privacy model}: the hash representation is a \emph{trapdoor} (underlying values cannot be recovered), while operations return \emph{Bernoulli Booleans}---plaintext approximate results with explicit error rates. This separation is key to understanding HBTS's guarantees: we hide what the data \emph{is}, but not the pattern of query \emph{results}. The framework draws on Bernoulli type theory~\cite{bernoulli-types}, which provides systematic error propagation rules for composed approximate operations.
+Two parameters place the construction on its trade-offs. The \emph{representation} parameter trades space for accuracy: a literal set of element trapdoors makes every operation collision-bounded in $O(k)$ space, while a compact fixed-width encoding (the image of a single-hash Bloom filter) saves space but renders intersection structurally approximate and complement non-preservable. The \emph{homophony} parameter $K(x)$---the number of encodings per value---fixes confidentiality: $K = 1$ (deterministic) opens the equality channel that makes the untrusted-side algebra possible, while $K > 1$ closes it, recovering the opaque, trusted-decode regime of the cipher-map framework~\cite{cipher-maps} that this construction instantiates as its online case. We are careful about the algebraic structure this yields: with union, intersection, difference, and symmetric difference but no representable complement, the finite trapdoor sets form a \emph{generalized} Boolean algebra (a Boolean ring without unit), not a Boolean algebra. Error-propagation rules for composed operations follow Bernoulli type theory~\cite{bernoulli-types}.
 
 \subsection{Motivating Example}
 
 Consider a healthcare consortium where multiple hospitals need to identify patients enrolled in overlapping clinical trials without revealing their complete patient lists. Traditional approaches would require either: (1) a trusted third party to perform the intersection, violating privacy requirements, (2) homomorphic encryption with prohibitive computational costs, or (3) complex MPC protocols requiring multiple rounds of communication.
 
-Using HBTS, each hospital can:
+Using the trapdoor set, each hospital can:
 \begin{enumerate}
 \item Transform patient identifiers using a shared cryptographic hash function
 \item Perform set intersection directly on hash values
 \item Obtain results with explicit error bounds (e.g., hash collision rate $< 2^{-256}$)
-\item Complete the entire operation in milliseconds rather than minutes
+\item Complete the operation non-interactively, at the cost of hashing and set operations, avoiding the homomorphic-evaluation or multi-round overhead of FHE or MPC
 \end{enumerate}
-
-This example illustrates HBTS's key advantage: practical performance with quantifiable privacy guarantees.
 
 \subsection{Contributions}
 
 This paper makes the following contributions:
 
 \begin{itemize}
-\item \textbf{Systematic Error Propagation}: We provide a formal framework for propagating error bounds through composed set operations on hash-transformed data, enabling applications to reason about accuracy-privacy trade-offs.
+\item \textbf{The trapdoor set as a value type}: we define the trapdoor set and characterize its algebra precisely---union, intersection, difference, and symmetric difference that are collision-bounded (no false negatives; false-positive rate $|S|\,2^{-n}$), forming a generalized Boolean algebra (a Boolean ring without unit) rather than a Boolean algebra, since complement is not finitely representable.
 
-\item \textbf{Practical Implementation}: We demonstrate that combining cryptographic hashing with probabilistic data structures achieves microsecond-scale performance for privacy-preserving set operations, offering 1000-10000× speedup over homomorphic encryption.
+\item \textbf{A representation trade-off}: we contrast the literal set (exact up to collision, $O(k)$ space) with the compact single-hash bit-vector (space-saving, but with a structurally approximate intersection and a complement we prove cannot be preserved).
 
-\item \textbf{Integration of Existing Techniques}: We show how established algorithms (Bloom filters, HyperLogLog) can be enhanced with cryptographic privacy guarantees through systematic application of hash transformations.
+\item \textbf{A confidentiality dial}: we show the homophony parameter $K(x)$ interpolates between the deterministic, equality-leaking regime studied here ($K=1$) and the opaque, trusted-decode regime of the cipher-map framework ($K>1$), situating the trapdoor set as the online instantiation of that framework.
 
-\item \textbf{Real-World Applications}: We validate HBTS through implementations of private set intersection, secure deduplication, and federated learning aggregation, demonstrating practical utility where approximate results are acceptable.
+\item \textbf{Error propagation and false-positive analysis}: we give closed-form error-propagation rules for composed operations and a size-dependent false-positive analysis for both representations.
 
-\item \textbf{Security Analysis}: We provide formal analysis showing that privacy is bounded by the collision probability of the underlying hash function, with explicit quantification of error rates.
+\item \textbf{Reference implementation}: we provide the \texttt{TrapdoorSet} type backing these claims with unit, property, and integration tests.
 \end{itemize}
-
-\subsection{Paper Organization}
-
-The remainder of this paper is organized as follows. Section~\ref{sec:background} provides background on cryptographic hash functions, Bernoulli Booleans, and threat model. Section~\ref{sec:design} presents the HBTS framework design, including the layered privacy model distinguishing trapdoor representation from Bernoulli query results. Section~\ref{sec:theory} develops the mathematical foundations and security analysis. Section~\ref{sec:implementation} describes our implementation and optimization techniques. Section~\ref{sec:evaluation} evaluates performance and security properties. Section~\ref{sec:applications} explores applications across multiple domains. Section~\ref{sec:related} discusses related work. Section~\ref{sec:conclusion} concludes.
 
 \section{Background and Threat Model}
 \label{sec:background}
 
 \subsection{Cryptographic Hash Functions}
 
-A cryptographic hash function $H: \{0,1\}^* \rightarrow \{0,1\}^n$ maps arbitrary-length inputs to fixed-size outputs while satisfying three key properties:
-
-\begin{definition}[Preimage Resistance]
-Given hash value $h$, finding any $x$ such that $H(x) = h$ requires $O(2^n)$ operations.
-\end{definition}
-
-\begin{definition}[Second Preimage Resistance]
-Given $x_1$, finding $x_2 \neq x_1$ such that $H(x_1) = H(x_2)$ requires $O(2^n)$ operations.
-\end{definition}
-
-\begin{definition}[Collision Resistance]
-Finding any pair $(x_1, x_2)$ where $x_1 \neq x_2$ and $H(x_1) = H(x_2)$ requires $O(2^{n/2})$ operations.
-\end{definition}
-
-HBTS exploits these properties to create one-way transformations that preserve equality testing probabilistically while preventing recovery of original values.
+A cryptographic hash function $H: \{0,1\}^* \rightarrow \{0,1\}^n$ maps arbitrary-length inputs to fixed-size outputs satisfying the standard properties: preimage resistance ($O(2^n)$ to invert), second preimage resistance ($O(2^n)$ to find a collision for a given input), and collision resistance ($O(2^{n/2})$ to find any collision). The trapdoor set exploits these properties to create one-way transformations that preserve equality testing probabilistically while preventing recovery of original values.
 
 \subsection{Approximate Data Structures}
 
-Approximate data structures trade perfect accuracy for improved space or time complexity. The canonical example is the Bloom filter~\cite{bloom1970space}, which supports membership queries with false positives but no false negatives. HBTS builds upon these well-established techniques, adding cryptographic privacy through hash transformations while maintaining explicit error bounds.
-
-\begin{definition}[Approximate Boolean]
-An approximate Boolean value is a tuple $(v, \alpha, \beta)$ where $v \in \{\mathsf{true}, \mathsf{false}\}$ is the observed value, $\alpha$ is the false positive rate (probability of observing true when latent value is false), and $\beta$ is the false negative rate (probability of observing false when latent value is true).
-\end{definition}
+Approximate data structures trade perfect accuracy for improved space or time complexity. The canonical example is the Bloom filter~\cite{bloom1970space}, which supports membership queries with false positives but no false negatives. The trapdoor set builds upon these well-established techniques, adding cryptographic privacy through hash transformations while maintaining explicit error bounds.
 
 \begin{definition}[Bernoulli Boolean]
 \label{def:bernoulli-boolean}
@@ -153,7 +128,7 @@ A \emph{Bernoulli Boolean} $\Bernoulli{\Bool}$ is an observed boolean $\obs{b}$ 
 \item $\fpr = \mathbb{P}[\obs{b} = \mathsf{true} \mid b = \mathsf{false}]$ (false positive rate)
 \item $\fnr = \mathbb{P}[\obs{b} = \mathsf{false} \mid b = \mathsf{true}]$ (false negative rate)
 \end{itemize}
-We distinguish \emph{second-order} Bernoulli Booleans where $\fpr \neq \fnr$ (asymmetric errors, as in Bloom filters and hash-based membership) from \emph{first-order} where $\fpr = \fnr$ (symmetric errors). HBTS produces second-order Bernoulli Booleans with $\fpr = 2^{-n}$ (hash collision) and $\fnr = 0$ (no false negatives).
+We distinguish \emph{second-order} Bernoulli Booleans where $\fpr \neq \fnr$ (asymmetric errors, as in Bloom filters and hash-based membership) from \emph{first-order} where $\fpr = \fnr$ (symmetric errors). The trapdoor set's membership test is a second-order Bernoulli Boolean with single-comparison $\fpr = 2^{-n}$ (hash collision) and $\fnr = 0$; against a set of size $|S|$ the membership false-positive rate is $|S|\,2^{-n}$ by a union bound.
 \end{definition}
 
 \begin{definition}[Confusion Matrix]
@@ -166,12 +141,10 @@ where $\ConfMat_{ij} = \mathbb{P}[\obs{b} = j \mid b = i]$ gives the probability
 \item \textbf{Rank-1 matrix} ($\fpr + \fnr = 1$): complete information loss, optimal privacy
 \item \textbf{Rank-2 matrix} ($\fpr + \fnr < 1$): information preserved, privacy/utility trade-off
 \end{itemize}
-For HBTS with $\fpr = 2^{-n}$ and $\fnr = 0$, the confusion matrix is nearly identity---high utility but query results are observable (the ``concession'' discussed in Section~\ref{sec:layered-privacy}).
+For a single comparison with $\fpr = 2^{-n}$ and $\fnr = 0$, the confusion matrix is nearly identity---high utility, but query results are observable through the equality channel (Section~\ref{sec:layered-privacy}).
 \end{definition}
 
-\begin{remark}[Latent vs. Observed Values]
-We distinguish \emph{latent} values (true mathematical objects, denoted $b, S, f$) from \emph{observed} values (computed approximations with error rates, denoted $\obs{b}, \obs{S}, \obs{f}$). This duality is fundamental: HBTS operates entirely on observed values while reasoning about their relationship to latent values through error bounds.
-\end{remark}
+Throughout, we distinguish \emph{latent} values ($b, S, f$) from \emph{observed} approximations ($\obs{b}, \obs{S}, \obs{f}$) carrying explicit error rates.
 
 \subsection{Threat Model}
 
@@ -195,41 +168,31 @@ We explicitly exclude:
 
 \subsection{Core Abstractions}
 
-HBTS is built around three core abstractions that compose to enable complex privacy-preserving operations:
+The trapdoor set is built around three core abstractions that compose to enable complex privacy-preserving operations:
 
 \subsubsection{Hash-Trapdoor Values}
 
-A hash-trapdoor value encapsulates the one-way transformation of sensitive data through cryptographic hashing. The key insight is that equality testing on hash values preserves the equality relation probabilistically while preventing recovery of original values. For equality testing, the false positive rate (reporting equality when values differ) equals the hash collision probability (e.g., $2^{-256}$ for SHA-256). Note that this bounds \emph{collision errors}, not privacy---privacy depends on input entropy and resistance to dictionary attacks. Implementation details are provided in Appendix A.
+A hash-trapdoor value is a one-way transformation of sensitive data: equality testing is preserved probabilistically (FPR equals hash collision probability, e.g., $2^{-256}$ for SHA-256) while original values cannot be recovered. Note that this bounds \emph{collision errors}, not privacy---privacy depends on input entropy and resistance to dictionary attacks.
 
 \subsubsection{Approximate Values}
 
-All operations in HBTS return approximate values with explicit error rates. Each approximate value maintains both the computed result and its associated false positive and false negative rates. This design makes uncertainty explicit and enables informed decision-making about accuracy-privacy trade-offs. When $\alpha + \beta \leq 1$, the confidence in a result equals $1 - \alpha - \beta$ where $\alpha$ and $\beta$ are the false positive and negative rates respectively.
+All operations in the trapdoor set return approximate values carrying both the computed result and its false positive and false negative rates $(\alpha, \beta)$, with confidence $1 - \alpha - \beta$ when $\alpha + \beta \leq 1$.
 
 \subsubsection{Set Operations}
 
-HBTS provides two primary set implementations with different algebraic properties:
-
-\textbf{Boolean Sets} support full Boolean algebra:
+The trapdoor set supports the operations of a generalized Boolean algebra over its opaque elements:
 \begin{itemize}
-\item Union: $A \cup B$ with error propagation
-\item Intersection: $A \cap B$ with error composition
-\item Complement: $\neg A$ with error inversion
-\item Membership: $x \in A$ with hash collision probability
+\item Union $A \cup B$, intersection $A \cap B$, difference $A \setminus B$, and symmetric difference $A \triangle B$, computed as set operations on the element encodings;
+\item Membership $x \in A$ by encoding equality, with false-positive rate bounded by the hash-collision probability and no false negatives.
 \end{itemize}
-
-\textbf{Symmetric Difference Sets} form a group under XOR:
-\begin{itemize}
-\item XOR: $A \oplus B$ for disjoint unions
-\item Identity: Empty set
-\item Inverse: Every set is its own inverse
-\item Efficient for aggregation operations
-\end{itemize}
+There is no complement operation: the complement of a finite set is not finitely representable (Proposition~\ref{prop:gen-boolean}). Symmetric difference makes the finite trapdoor sets a Boolean ring without unit---$\triangle$ is addition and $\cap$ is multiplication---which is convenient for aggregation. The compact bit-vector representation (Section~\ref{sec:boolean-algebra}) offers a syntactic complement via bitwise $\neg$, but it does not preserve set complement.
 
 \subsection{Error Propagation}
 
-A key aspect of HBTS is systematic error propagation through operations. For Boolean operations, we derive tight bounds:
+A key aspect of the trapdoor set is systematic error propagation through operations. For Boolean operations, we derive tight bounds:
 
 \begin{theorem}[Union Error Bound]
+\label{thm:union}
 For sets $A$ and $B$ with false positive rates $\alpha_A, \alpha_B$ and false negative rates $\beta_A, \beta_B$:
 \begin{align}
 \alpha_{A \cup B} &\leq \alpha_A + \alpha_B - \alpha_A \cdot \alpha_B \\
@@ -237,7 +200,12 @@ For sets $A$ and $B$ with false positive rates $\alpha_A, \alpha_B$ and false ne
 \end{align}
 \end{theorem}
 
+\begin{proof}
+Dual to Theorem~\ref{thm:intersection} by De Morgan's laws: $A \cup B = \overline{\bar{A} \cap \bar{B}}$. Complement swaps error rates ($\alpha \leftrightarrow \beta$), and intersection multiplies false positive rates while accumulating false negative rates via inclusion-exclusion. Equivalently: a false positive in the union occurs if \emph{either} set reports a false positive (independent events, yielding the inclusion-exclusion bound $\alpha_A + \alpha_B - \alpha_A \alpha_B$), while a false negative requires \emph{both} sets to miss the element (yielding the product $\beta_A \cdot \beta_B$).
+\end{proof}
+
 \begin{theorem}[Intersection Error Bound]
+\label{thm:intersection}
 For sets $A$ and $B$ with false positive rates $\alpha_A, \alpha_B$ and false negative rates $\beta_A, \beta_B$:
 \begin{align}
 \alpha_{A \cap B} &= \alpha_A \cdot \alpha_B \\
@@ -249,9 +217,10 @@ For sets $A$ and $B$ with false positive rates $\alpha_A, \alpha_B$ and false ne
 For intersection, a false positive requires \emph{both} sets to report false positives (independent events). A false negative occurs if \emph{either} set reports a false negative for an element truly in the intersection.
 \end{proof}
 
-These bounds enable applications to predict error accumulation through complex operations. Note that intersection \emph{reduces} false positive rates (multiplicative) while union \emph{increases} them (sub-additive).
+Note that intersection \emph{reduces} false positive rates (multiplicative) while union \emph{increases} them (sub-additive).
 
 \begin{theorem}[Boolean Error Composition]
+\label{thm:boolean-composition}
 For independent approximate Booleans $\obs{b}_1, \obs{b}_2$ with error rates $(\alpha_1, \beta_1)$ and $(\alpha_2, \beta_2)$:
 \begin{align}
 \neg\obs{b}: &\quad (\beta, \alpha) \text{ (rates swap)} \\
@@ -263,6 +232,12 @@ For independent approximate Booleans $\obs{b}_1, \obs{b}_2$ with error rates $(\
 \begin{proof}
 Negation swaps the meaning of false positive and false negative. For conjunction, a false positive requires both operands to err (independent), while a false negative occurs if either errs. Disjunction is dual by De Morgan's laws.
 \end{proof}
+
+% IMPROVED: Added Bernoulli axiom connection (cross-ecosystem insight)
+\begin{remark}[Bernoulli Model Foundation]
+\label{rem:bernoulli-foundation}
+The closed-form error rates for AND, OR, NOT, and their compositions above are consequences of the Bernoulli model's element-wise independence axiom: each element's membership error is an independent channel. Formally, the joint confusion matrix for a $t$-element operation factors as a Kronecker (tensor) product of per-element confusion matrices $\ConfMat^{\otimes t}$, so that composed error rates reduce to scalar arithmetic on $(\fpr, \fnr)$ pairs. This factorization is what makes the error propagation rules tractable---without independence, composed error bounds would require the full joint distribution over all elements.
+\end{remark}
 
 % FIXED (BA-5): The original corollary gave a vague linear bound without
 % distinguishing OR vs AND composition. Also renamed n -> t to avoid
@@ -277,10 +252,10 @@ For $t$-fold composition of independent Bernoulli Booleans each with FPR $\fpr$:
 Dually, for FNR $\fnr$: $t$-fold AND accumulates as $\fnr_{\text{total}} = 1 - (1-\fnr)^t$, and $t$-fold OR reduces as $\fnr_{\text{total}} = \fnr^t$.
 \end{corollary}
 
-\subsection{Layered Privacy: Trapdoor Representation, Bernoulli Results}
+\subsection{Privacy: Non-Recovery and the Equality Channel}
 \label{sec:layered-privacy}
 
-HBTS exhibits a layered privacy model combining two distinct mechanisms: \emph{trapdoor representation} through one-way hash transformations, and \emph{Bernoulli query results} that are plaintext but approximate. Understanding this layered structure is essential for correctly reasoning about HBTS's privacy guarantees.
+The construction's privacy has two distinct mechanisms: \emph{trapdoor representation} through one-way encodings, by which nothing is recovered, and an \emph{equality channel} that deterministic encoding opens, by which structural relations among elements become observable.
 
 \subsubsection{Trapdoor Representation Layer}
 
@@ -290,20 +265,19 @@ The hash transformation $T_k(v) = H(k \| v)$ creates a \emph{trapdoor representa
 \item \textbf{Key-dependent hiding}: Without knowledge of $k$, an adversary cannot verify membership guesses
 \item \textbf{Representation uniformity}: Hash values appear uniformly random, hiding structural properties of inputs
 \end{itemize}
-The representation layer is the trapdoor at the heart of HBTS---the hash values themselves reveal nothing about the original data.
 
-\subsubsection{Bernoulli Query Layer}
+\subsubsection{The Equality Channel}
 
-Operations on hash values return \emph{Bernoulli Booleans}---plaintext approximate results with explicit error rates:
+Because encoding is deterministic, encodings can be compared for equality, and this is what the untrusted side exploits:
 \begin{itemize}
-\item \textbf{Membership queries}: $x \in S$ returns an observable true/false with rates $(\fpr, 0)$ where $\fpr = 2^{-n}$
-\item \textbf{Set operations}: Union and intersection return sets with composed error rates per Theorems 1--3
-\item \textbf{Results are not hidden}: An observer sees query outcomes as plaintext booleans
+\item \textbf{Membership}: $x \in S$ is decided by encoding equality, returning a plaintext boolean with false-positive rate at most $|S|\,2^{-n}$ and no false negatives;
+\item \textbf{Set operations}: union, intersection, difference, and symmetric difference are computed directly on encodings, exact up to the same collision bound;
+\item \textbf{What an observer sees}: the equality relations among encodings---which coincide, which queries hit---but no plaintext value.
 \end{itemize}
 
-\begin{remark}[The Concession]
+\begin{remark}[What leaks: the equality channel]
 \label{rem:concession}
-While the trapdoor hides the underlying data, \emph{query results are observable}. A fully access-pattern-hiding system would conceal even the pattern of true/false results (as in oblivious RAM~\cite{oset}). HBTS trades this stronger property for practical efficiency---suitable when query results are already shared (e.g., private set intersection reveals intersection members) or when the pattern of results is not sensitive.
+The trapdoor never reveals a plaintext value, but a party holding the encoded set learns the \emph{equality pattern} among encodings: which elements coincide, and whether a queried encoding is present. This is the leakage profile of deterministic and searchable symmetric encryption~\cite{curtmola2006searchable}, and it is a different axis from decoding---equality leaks without any preimage being broken. It is the price of letting the untrusted side run the algebra itself, and it is exactly what the homophony parameter $K$ controls: $K = 1$ opens this channel, while $K > 1$ closes it at the cost of moving evaluation behind a trusted decoder.
 \end{remark}
 
 \subsubsection{Hash Values as Bernoulli Set Carriers}
@@ -313,11 +287,11 @@ The \texttt{HashValue} type with bitwise operations ($\land$, $\lor$, $\oplus$, 
 \fpr &= 2^{-n} \quad \text{(hash collision probability for $n$-bit hash)} \\
 \fnr &= 0 \quad \text{(no false negatives for hash equality)}
 \end{align}
-This asymmetry ($\fpr > 0$, $\fnr = 0$) is characteristic of hash-based data structures and propagates through composed operations according to the error composition rules.
+This asymmetry ($\fpr > 0$, $\fnr = 0$) propagates through composed operations via the error composition rules above.
 
 \subsection{Architecture}
 
-HBTS follows a layered architecture as shown in Figure~\ref{fig:architecture}:
+The construction follows a layered architecture as shown in Figure~\ref{fig:architecture}:
 
 \begin{figure}[h]
 \centering
@@ -339,31 +313,42 @@ HBTS follows a layered architecture as shown in Figure~\ref{fig:architecture}:
 (SHA-256, BLAKE2b, etc.) \\
 \hline
 \end{tabular}
-\caption{HBTS layered architecture}
+\caption{Layered architecture}
 \label{fig:architecture}
 \end{figure}
-
-This design enables modularity and allows applications to work at the appropriate abstraction level.
 
 \section{Mathematical Foundations}
 \label{sec:theory}
 
-\subsection{Boolean Algebra Framework}
+\subsection{Trapdoor Sets and Their Algebra}
+\label{sec:trapdoor-set}
+
+Fix a value universe $X$ and a deterministic keyed one-way encoding $T_k : X \to \{0,1\}^n$, $T_k(v) = H(k \| v)$. The \emph{trapdoor set} of a finite $A \subseteq X$ is the literal set of its element encodings,
+$$\tau(A) := \{\, T_k(a) : a \in A \,\} \subseteq \{0,1\}^n.$$
+An untrusted party holding $\tau(A)$ and $\tau(B)$ computes union, intersection, difference, and symmetric difference as ordinary set operations on the byte strings, and answers membership by the equality test $T_k(x) \in \tau(A)$, returning a plaintext boolean. None of these operations uses the secret key, and none recovers a plaintext value.
+
+\begin{proposition}[Collision-bounded set algebra]
+\label{prop:collision-bounded}
+Condition on $T_k$ being injective on the values in question; the complementary event is a hash collision, of probability at most $\binom{|A|+|B|}{2} 2^{-n}$. Under injectivity, $\tau$ commutes with all four operations exactly,
+$$\tau(A) \odot \tau(B) = \tau(A \odot B), \qquad \odot \in \{\cup, \cap, \setminus, \triangle\},$$
+and $T_k(x) \in \tau(A) \iff x \in A$. Consequently membership has no false negatives and a false-positive rate at most $|A|\,2^{-n}$, and this collision bound is the \emph{only} error in the set operations: there is no structural approximation.
+\end{proposition}
+
+\begin{proof}
+$T_k$ is a function, so $a \in A \Rightarrow T_k(a) \in \tau(A)$; there are no false negatives. When $T_k$ is injective on $A \cup B$, the map $a \mapsto T_k(a)$ is a bijection onto $\tau(A \cup B)$ that carries each Boolean operation on subsets of $A \cup B$ to the corresponding operation on images, giving exact commutation. A membership false positive requires $T_k(x) = T_k(a)$ for some $a \in A$ with $x \notin A$; a union bound over $a \in A$ gives $|A|\,2^{-n}$. The injectivity failure probability is the birthday bound over the $\le |A| + |B|$ values involved.
+\end{proof}
+
+\begin{proposition}[Algebraic structure]
+\label{prop:gen-boolean}
+Over an unbounded universe $X$ (e.g.\ $X = \{0,1\}^*$), the finite trapdoor sets under $(\cup, \cap, \setminus, \triangle, \emptyset)$ form a \emph{generalized} Boolean algebra: a relatively complemented distributive lattice with least element $\emptyset$ but no greatest element---equivalently a Boolean ring without unit, with $\triangle$ as addition and $\cap$ as multiplication. They are \emph{not} a Boolean algebra, because complement is absent: $X \setminus A$ is infinite and has no finite trapdoor-set representation. Over a finite universe $X$ the greatest element $\tau(X)$ exists and complement becomes $\tau(X) \setminus \tau(A)$, recovering a bounded Boolean algebra---at the cost of materializing $\tau(X)$, the encoding of the entire universe, which is practical only for small $X$.
+\end{proposition}
+
+The literal representation stores $|A|$ encodings and keeps every operation collision-bounded. When space is the binding constraint, a trapdoor set can be compressed to a fixed-width bit vector, at the cost of a \emph{structural} approximation the literal form avoids. We develop that compact representation next; it is the object of the homomorphism and the complement-non-preservation result that follow.
+
+\subsection{A Compact Representation: Bit-Vector Encoding}
 \label{sec:boolean-algebra}
 
-HBTS is grounded in a homomorphism between two Boolean algebras: the algebra of sets over arbitrary bit strings, and the algebra of fixed-size bit vectors. This section formalizes this relationship.
-
-\begin{definition}[Set Boolean Algebra]
-The \emph{set Boolean algebra} is the structure
-$$A := \left(\mathcal{P}(\{0,1\}^*), \cup, \cap, \neg, \emptyset, \{0,1\}^*\right)$$
-where $\mathcal{P}(\{0,1\}^*)$ is the power set of all finite bit strings, with union, intersection, complement, empty set, and universal set.
-\end{definition}
-
-\begin{definition}[Bit Vector Boolean Algebra]
-The \emph{bit vector Boolean algebra} is the structure
-$$B := \left(\{0,1\}^m, \lor, \land, \neg, 0^m, 1^m\right)$$
-where $\{0,1\}^m$ consists of $m$-bit vectors with bitwise OR, AND, negation, zero vector, and all-ones vector.
-\end{definition}
+The compact representation maps a trapdoor set to a single $m$-bit vector by OR-ing its element hashes. It is a homomorphism between two Boolean algebras: the \emph{set algebra} $A := (\mathcal{P}(\{0,1\}^*), \cup, \cap, \neg, \emptyset, \{0,1\}^*)$ over arbitrary bit strings, and the \emph{bit vector algebra} $B := (\{0,1\}^m, \lor, \land, \neg, 0^m, 1^m)$ of $m$-bit vectors with bitwise operations. Unlike the literal set, this map has a syntactic top $1^m$ and a syntactic complement (bitwise $\neg$); we will see that the latter does not correspond to set complement (Theorem~\ref{thm:complement}), so the compact form only appears to be a Boolean algebra.
 
 % FIXED (BA-2): Added caveat that intersection mapping (\cap -> \land) is only
 % a superset: F(A) & F(B) \supseteq F(A \cap B), with extra 1-bits possible
@@ -398,8 +383,6 @@ The homomorphism $F$ is one-way for two independent reasons:
 \end{enumerate}
 \end{theorem}
 
-These two properties combine to provide computational one-wayness: even though the mapping is many-to-one, finding any preimage remains computationally hard.
-
 % FIXED: Replaced Corollary 1 (Bit-Rate Formula) with correct derivation.
 % The original used the wrong approximation log_2(alpha) ~ -(alpha) for alpha close to 1.
 % Correct: log_2(1 - delta) ~ -delta/ln(2) for small delta.
@@ -426,68 +409,44 @@ which tends to 0 exponentially as $s \to \infty$ (since $\log_2 \alpha(s) \to 0$
 
 \subsection{Security Analysis}
 
-We formalize HBTS's security properties using the random oracle model for hash functions.
+We separate two guarantees: \emph{non-recovery} of plaintext values, and \emph{confidentiality} against an adversary who observes the encodings and the equality relations among them. Preimage resistance provides the first; it does not provide the second.
 
-\begin{definition}[One-Wayness Game]
-The one-wayness game $\mathcal{G}_{OW}$ between challenger $\mathcal{C}$ and adversary $\mathcal{A}$:
-\begin{enumerate}
-\item $\mathcal{C}$ selects random $x \in \{0,1\}^*$ and key $k$
-\item $\mathcal{C}$ computes $h = H(k||x)$ and sends $h$ to $\mathcal{A}$
-\item $\mathcal{A}$ outputs $x'$
-\item $\mathcal{A}$ wins if $x' = x$
-\end{enumerate}
-\end{definition}
-
-\begin{theorem}[Privacy Preservation]
-Let $H: \{0,1\}^* \rightarrow \{0,1\}^n$ be a random oracle. For any PPT adversary $\mathcal{A}$, the probability of winning $\mathcal{G}_{OW}$ is negligible:
-$$\Pr[\mathcal{A} \text{ wins } \mathcal{G}_{OW}] \leq 2^{-n} + \text{negl}(n)$$
+\begin{theorem}[Non-Recovery]
+\label{thm:privacy}
+Let $H: \{0,1\}^* \rightarrow \{0,1\}^n$ be modeled as a random oracle. Under the random oracle model, recovering $x$ from $H(k \| x)$ requires expected $O(2^n)$ hash evaluations when $k$ is secret and uniformly random. No efficient algorithm can determine the input $x$ from the hash output with non-negligible probability.
 \end{theorem}
 
 \begin{proof}
-In the random oracle model, $H(k||x)$ is uniformly distributed over $\{0,1\}^n$. Without knowledge of $k$, the adversary's view is independent of $x$, reducing to random guessing with success probability $2^{-n}$.
+In the random oracle model, $H(k \| x)$ is uniformly distributed over $\{0,1\}^n$ and independent of $x$ from the adversary's perspective (since $k$ is unknown). Each hash evaluation tests one candidate input, and the probability of matching the target output is $2^{-n}$ per evaluation. After $q$ queries, the success probability is at most $q \cdot 2^{-n}$, which is negligible for $q$ polynomial in $n$.
 \end{proof}
 
-\subsection{Approximate Algebraic Properties}
+\begin{remark}[Confidentiality is governed by the equality channel, not preimage hardness]
+\label{rem:qif}
+Theorem~\ref{thm:privacy} prevents recovering $x$ from $T_k(x)$, but says nothing about what the encodings leak \emph{collectively}. Under deterministic encoding ($K = 1$), an adversary observing the encoded set and a stream of queries learns the partition of values by equality and their frequencies---the leakage profile of deterministic and searchable symmetric encryption~\cite{curtmola2006searchable}. The appropriate confidentiality measure is therefore quantitative information flow: the entropy of the observed encoding distribution relative to the prior, degraded precisely by the equality channel and improved by homophony ($K > 1$). Preimage hardness bounds non-recovery; it is not a confidentiality bound.
+\end{remark}
 
-HBTS exhibits approximate algebraic properties with explicit error bounds:
-
-% FIXED: Intersection claim was stated as approximate equality, but bitwise AND
-% actually satisfies F(A) & F(B) \supseteq F(A \cap B) -- the AND can have extra
-% 1-bits from cross-element hash collisions (element in A\setminus B colliding
-% with element in B\setminus A). This means intersection has a false positive rate.
-\begin{definition}[Approximate Set Operations]
-For hash-transformed sets $H(A)$ and $H(B)$ (represented as OR of hash values per Definition~8), operations preserve set relationships as follows:
-\begin{itemize}
-\item Union: $H(A) \lor H(B) = H(A \cup B)$ (exact by definition of bitwise OR)
-\item Intersection: $H(A) \land H(B) \supseteq H(A \cap B)$, i.e., the bitwise AND is a superset of the true intersection encoding. Equality holds when there are no cross-element hash collisions between $A \setminus B$ and $B \setminus A$. Each extra 1-bit arises with probability at most $|A \setminus B| \cdot |B \setminus A| / 2^n$ per bit position, yielding a per-element false positive rate bounded by $(1 - (1-2^{-n})^{|A \setminus B| \cdot |B \setminus A|})$.
-\item Symmetric difference: $H(A) \oplus H(B) = H(A \triangle B)$ (exact for disjoint sets)
-\end{itemize}
-\end{definition}
-
-\textbf{Important Note}: Union is exact (OR preserves all set bits), but intersection via AND is only a superset---extra 1-bits from cross-element collisions produce false positives. These are \emph{not} true homomorphic properties in general; the framework provides practical privacy-preserving computation where approximate results with explicit error bounds are acceptable.
-
-\subsection{Size-Dependent False Positive Analysis}
+\subsection{Size-Dependent False Positives in the Compact Representation}
 \label{sec:fpr-analysis}
 
-The simple bound $\fpr = 2^{-n}$ assumes single-element queries. For sets of size $k$, the FPR depends on set density. We derive precise bounds from the bit-string representation.
+For the literal trapdoor set, membership false positives are governed solely by the collision bound of Proposition~\ref{prop:collision-bounded}, independent of layout. The compact bit-vector representation is different: because elements share a fixed-width vector, its false-positive rate depends on how densely the set fills it, which we now derive.
 
 \begin{theorem}[Membership False Positive Rate]
 \label{thm:membership-fpr}
-For a set $S$ of size $k$ represented as $n$-bit strings, the false positive rate for membership queries is:
-$$\varepsilon_{\in}(k,n) = \left(1 - 2^{-(k+1)}\right)^n$$
-For small $k$, this approximates to $\varepsilon_{\in} \approx e^{-n \cdot 2^{-(k+1)}}$.
+For a set $S$ of size $k$ represented as an $m$-bit vector, the false positive rate for membership queries is:
+$$\varepsilon_{\in}(k,m) = \left(1 - 2^{-(k+1)}\right)^m$$
+For large $k$, this approximates to $\varepsilon_{\in} \approx e^{-m \cdot 2^{-(k+1)}}$.
 \end{theorem}
 
 \begin{proof}
 After $k$ insertions, each bit position is set to 1 with probability $1 - 2^{-k}$. For a random element $x \notin S$ to test positive, every bit position where $h(x)$ is 1 must also be 1 in $F(S)$. Since $h(x)$ has each bit set with probability $\frac{1}{2}$, the probability that bit $j$ does not refute membership is:
 $$\Pr[\neg(h(x)_j = 1 \land F(S)_j = 0)] = 1 - \frac{1}{2} \cdot 2^{-k} = 1 - 2^{-(k+1)}$$
-The result follows from independence across $n$ bit positions.
+The result follows from independence across $m$ bit positions.
 \end{proof}
 
 \begin{theorem}[Subset False Positive Rate]
 \label{thm:subset-fpr}
 For sets $S_1, S_2$ of sizes $k_1, k_2$, the false positive rate for the subset test $S_1 \subseteq S_2$ is:
-$$\varepsilon_{\subseteq}(k_1, k_2, n) = \left(1 - (1 - 2^{-k_1}) \cdot 2^{-k_2}\right)^n$$
+$$\varepsilon_{\subseteq}(k_1, k_2, m) = \left(1 - (1 - 2^{-k_1}) \cdot 2^{-k_2}\right)^m$$
 \end{theorem}
 
 \begin{proof}
@@ -496,21 +455,27 @@ For $S_1 \subseteq S_2$ to test positive falsely, every bit set in $F(S_1)$ must
 
 \begin{theorem}[Space Complexity]
 \label{thm:space-complexity}
-To maintain a fixed false positive rate $\varepsilon$ for membership queries on a set of size $k$, the hash size must satisfy:
-$$n = \mathcal{O}(2^k)$$
+To maintain a fixed false positive rate $\varepsilon$ for membership queries on a set of size $k$, the vector width must satisfy:
+$$m = \mathcal{O}(2^k)$$
 This exponential growth limits the single-level scheme to small sets (typically $k \leq 20$).
 \end{theorem}
 
 \begin{proof}
-From Theorem~\ref{thm:membership-fpr}, we have $\varepsilon = (1 - 2^{-(k+1)})^n$. Solving for $n$:
-$$n = \frac{\log \varepsilon}{\log(1 - 2^{-(k+1)})} \approx \frac{\log \varepsilon}{-2^{-(k+1)}} = -\log(\varepsilon) \cdot 2^{k+1}$$
-Thus $n = \mathcal{O}(2^k)$ for fixed $\varepsilon$.
+From Theorem~\ref{thm:membership-fpr}, we have $\varepsilon = (1 - 2^{-(k+1)})^m$. Solving for $m$:
+$$m = \frac{\log \varepsilon}{\log(1 - 2^{-(k+1)})} \approx \frac{\log \varepsilon}{-2^{-(k+1)}} = -\log(\varepsilon) \cdot 2^{k+1}$$
+Thus $m = \mathcal{O}(2^k)$ for fixed $\varepsilon$.
 \end{proof}
+
+% IMPROVED: Connected space complexity to information-theoretic bound
+\begin{remark}[Information-Theoretic Consistency]
+\label{rem:info-theoretic-bound}
+This exponential growth in $k$ is consistent with the information-theoretic lower bound of $-\log_2(\varepsilon)$ bits per element from the Bernoulli entropy analysis. For the trapdoor Boolean algebra (online construction), the space budget $m$ is fixed at construction time, forcing $\varepsilon$ to degrade as $k$ grows. Equivalently, each inserted element consumes $\mathcal{O}(1)$ bits of the fixed-size representation, leaving fewer bits to distinguish non-members, which is why $\varepsilon$ increases monotonically with the set size $k$ for fixed $m$.
+\end{remark}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{combined_fpr_vs_size.png}
-\caption{False positive rate vs. hash size for different set sizes $k$. Left: small sets ($k=4$--$10$) require bytes to achieve 5\% FPR. Right: larger sets ($k=12$--$16$) require kilobytes, demonstrating the $\mathcal{O}(2^k)$ space complexity.}
+\caption{False positive rate vs.\ bit-vector width for different set sizes $k$. Left: small sets ($k=4$--$10$) require bytes to achieve 5\% FPR. Right: larger sets ($k=12$--$16$) require kilobytes, demonstrating the $\mathcal{O}(2^k)$ space complexity.}
 \label{fig:fpr-space}
 \end{figure}
 
@@ -520,12 +485,18 @@ The homomorphism $F$ does not preserve complement: $F(\neg_A x) \neq \neg_B F(x)
 \end{theorem}
 
 \begin{proof}
-For any finite set $x$, the complement $\neg_A x = X^* \setminus x$ contains infinitely many elements from the free semigroup $X^*$. Since the hash function $h: X^* \to \{0,1\}^n$ uniformly distributes over $2^n$ possible outputs, by the pigeonhole principle, $F(\neg_A x)$ will have all bit positions set to 1 as elements from $\neg_A x$ are added:
-$$F(\neg_A x) = 0^n \,|\, h(y_1) \,|\, h(y_2) \,|\, \cdots = 1^n$$
+For any finite set $x$, the complement $\neg_A x = X^* \setminus x$ contains infinitely many elements from the free semigroup $X^*$. Since the hash function $h: X^* \to \{0,1\}^m$ uniformly distributes over $2^m$ possible outputs, by the pigeonhole principle, $F(\neg_A x)$ will have all bit positions set to 1 as elements from $\neg_A x$ are added:
+$$F(\neg_A x) = 0^m \,|\, h(y_1) \,|\, h(y_2) \,|\, \cdots = 1^m$$
 for any enumeration $\{y_1, y_2, \ldots\} \subseteq \neg_A x$.
 
-However, $\neg_B F(x) = \mathord{\sim}(h(x_1) \,|\, \cdots \,|\, h(x_k))$ for finite $x = \{x_1, \ldots, x_k\}$. Since $F(x)$ is a finite OR of $k$ hash values, some bit positions will remain 0 in $F(x)$, making those positions 1 in $\neg_B F(x)$ but also making some positions 0. Thus $\neg_B F(x) \neq 1^n = F(\neg_A x)$.
+However, $\neg_B F(x) = \mathord{\sim}(h(x_1) \,|\, \cdots \,|\, h(x_k))$ for finite $x = \{x_1, \ldots, x_k\}$. Since $F(x)$ is a finite OR of $k$ hash values, some bit positions will remain 0 in $F(x)$, making those positions 1 in $\neg_B F(x)$ but also making some positions 0. Thus $\neg_B F(x) \neq 1^m = F(\neg_A x)$.
 \end{proof}
+
+% IMPROVED: Strengthened complement non-preservation with structural argument
+\begin{remark}[Structural Necessity of Complement Failure]
+\label{rem:complement-structural}
+This asymmetry---AND/OR preserved (at least approximately), NOT not preserved---is structural, not an artifact of the hash construction. Any approximate Boolean algebra homomorphism from an infinite source algebra to a finite target algebra must fail to preserve complement, since the complement of a finite set in an infinite domain covers all hash values by pigeonhole. More precisely, for any finite codomain of size $2^m$ and any finite set $x$ with $|\neg_A x| = \infty$, the image $F(\neg_A x)$ saturates to the maximal element $1^m$, while $\neg_B F(x)$ is strictly submaximal whenever $F(x) \neq 0^m$. This obstruction is independent of the choice of hash function or encoding scheme.
+\end{remark}
 
 \begin{remark}[Boolean Ring Alternative]
 \label{rem:boolean-ring}
@@ -543,7 +514,7 @@ Given hash output size $q$ bits, partition into:
 \item First $w$ bits: bin index (selecting one of $2^w$ bins)
 \item Remaining $q-w$ bits: element representation within bin
 \end{itemize}
-Total space: $n = 2^w(q-w)$ bits. Expected elements per bin: $k/2^w$.
+Total space: $2^w(q-w)$ bits. Expected elements per bin: $k/2^w$.
 \end{definition}
 
 \begin{theorem}[Two-Level FPR]
@@ -551,7 +522,7 @@ The membership FPR for the two-level scheme with $k$ elements is:
 $$\varepsilon(k,w,q) = \left(1 - 2^{-(k/2^w + 1)}\right)^{q-w}$$
 \end{theorem}
 
-This achieves practical FPR for large sets: with $w = 8$, $q = 256$, and $k = 1000$, we have approximately 4 elements per bin and FPR $\approx 2^{-248}$, using only 63.5 KB total storage.
+This achieves practical FPR for large sets: with $w = 8$, $q = 256$, and $k = 1000$, we have approximately 4 elements per bin and FPR $\approx 2^{-12}$, using about 7.8 KB total storage.
 
 \begin{figure}[t]
 \centering
@@ -563,7 +534,7 @@ This achieves practical FPR for large sets: with $w = 8$, $q = 256$, and $k = 10
 \subsection{Unified Hash Construction}
 \label{sec:unified-hash}
 
-All HBTS operations derive from a general hash-based construction that unifies probabilistic data structures with cryptographic privacy~\cite{bernoulli-types,trapdoor-computing}:
+All the trapdoor set operations derive from a general hash-based construction that unifies probabilistic data structures with cryptographic privacy~\cite{bernoulli-types,trapdoor-computing}:
 
 \begin{definition}[Hash-Based Bernoulli Type]
 \label{def:hash-bernoulli}
@@ -579,8 +550,8 @@ The resulting type is a \emph{Bernoulli approximation} of $T$: operations on $\B
 The false positive rate emerges from encoding set sizes: $\fpr = |\ValidEnc{\mathsf{true}}|/2^m$. This unified view reveals that Bloom filters, trapdoor functions, and approximate maps are all instances of the same construction with different encoding strategies:
 \begin{itemize}
 \item \textbf{Bloom filter}: Multiple hash functions create overlapping valid encoding regions, yielding $\fpr = (1 - e^{-kn/m})^k$
-\item \textbf{HBTS trapdoor}: Single keyed hash with $\ValidEnc{\mathsf{true}} = \{H(k \| v)\}$, yielding $\fpr = 2^{-m}$ (collision probability)
-\item \textbf{Approximate maps}: Encoding sizes vary by output value, enabling the 1/p(y) principle for privacy
+\item \textbf{Trapdoor set}: Single keyed hash with $\ValidEnc{\mathsf{true}} = \{H(k \| v)\}$, yielding $\fpr = 2^{-m}$ (collision probability)
+\item \textbf{Approximate maps}: Encoding sizes vary by output value, enabling homophonic (frequency-proportional) allocation for privacy
 \end{itemize}
 
 \subsection{Privacy-Space Trade-off}
@@ -588,26 +559,22 @@ The false positive rate emerges from encoding set sizes: $\fpr = |\ValidEnc{\mat
 
 The same hash construction achieves fundamentally different goals by varying encoding sizes~\cite{bernoulli-types}:
 
-\textbf{Space-Optimal Encoding}: $|\ValidEnc{y}| \propto \text{freq}(y)$ (proportional to frequency). Minimizes expected encoding size but reveals frequency information. Used in compression and space-efficient data structures.
+\textbf{Space-Optimal Encoding}: $|\ValidEnc{y}| = 1$ (one encoding per value). Minimizes the total number of valid cipher values, but the single representation of each $y$ is then observed with that value's own frequency, revealing the frequency distribution. Used in compression and space-efficient data structures.
 
-\textbf{Privacy-Optimal Encoding}: $|\ValidEnc{y}| \propto 1/\text{freq}(y)$ (inverse frequency). Achieves uniform output distribution, hiding frequency patterns. This is the \emph{1/p(y) principle} from Bernoulli type theory~\cite{trapdoor-computing}---the key insight connecting approximation to privacy.
+\textbf{Privacy-Optimal Encoding}: $|\ValidEnc{y}| \propto \text{freq}(y)$ (proportional to frequency). Frequent values receive proportionally more encodings, so under the real query distribution each individual cipher value is equiprobable and the observed cipher-value distribution is flat, hiding frequency patterns. This is the classical Simmons homophonic prescription~\cite{simmons1979symmetric}, the key insight connecting approximation to privacy.
 
-\begin{theorem}[Uniformity from Inverse-Frequency]
-\label{thm:inverse-freq}
-With encoding sizes $|\ValidEnc{y}| = c/\text{freq}(y)$ for constant $c$:
-$$P[\text{Output} = y] = \frac{|\ValidEnc{y}|}{2^m} = \text{constant}$$
-achieving uniform output distribution without explicit randomization.
+\begin{theorem}[Uniformity from Homophonic Allocation]
+\label{thm:homophonic-uniformity}
+Let each output value $y$ occur with probability $\text{freq}(y)$ and be encoded by a uniform choice within $\ValidEnc{y}$. With encoding-set sizes $|\ValidEnc{y}| = c\,\text{freq}(y)$ for constant $c$, every cipher value $v \in \ValidEnc{y}$ is observed with probability
+$$P[\text{cipher value} = v] = \frac{\text{freq}(y)}{|\ValidEnc{y}|} = \frac{1}{N}, \qquad N := \sum_y |\ValidEnc{y}| = c,$$
+so the observed cipher-value distribution is uniform without explicit randomization. (The inverse allocation $|\ValidEnc{y}| \propto 1/\text{freq}(y)$ sharpens the distribution instead, the opposite of the privacy goal.)
 \end{theorem}
 
-\begin{remark}[Theoretical Foundation]
-The 1/p(y) principle explains why hash-based constructions achieve privacy: by mapping inputs through a uniform hash function, high-entropy inputs produce uniformly distributed outputs regardless of the original distribution. This is an instance of the more general principle that encoding sizes inversely proportional to frequency yield privacy without explicit randomization.
-\end{remark}
-
-HBTS uses uniform-sized encodings (a middle ground), providing practical privacy at constant space cost per element. Each element receives a fixed-size hash representation, offering computational privacy when the input domain has sufficient entropy.
+The trapdoor set uses uniform-sized encodings (a middle ground), providing practical privacy at constant space cost per element. Each element receives a fixed-size hash representation, offering computational privacy when the input domain has sufficient entropy.
 
 \subsection{Cardinality Estimation}
 
-HBTS incorporates the well-established HyperLogLog algorithm~\cite{flajolet2007hyperloglog} for cardinality estimation on hash-transformed sets. We apply HyperLogLog without modification, relying on its proven accuracy guarantees:
+The trapdoor set incorporates the well-established HyperLogLog algorithm~\cite{flajolet2007hyperloglog} for cardinality estimation on hash-transformed sets. We apply HyperLogLog without modification, relying on its proven accuracy guarantees:
 
 \begin{algorithm}
 \caption{Cardinality Estimation}
@@ -632,78 +599,46 @@ The algorithm achieves relative error $1.04/\sqrt{m}$ using $O(m \log \log n)$ b
 \section{Implementation}
 \label{sec:implementation}
 
-We implemented HBTS as a header-only C++20 library, using modern language features for type safety and performance. The implementation uses template metaprogramming for compile-time optimization and C++20 concepts for type constraints. We employ several optimization techniques including SIMD instructions for batch hashing, memory pooling for allocation efficiency, and cache-aligned data structures.
-
-The library provides flexible key management supporting key derivation for different contexts, periodic key rotation, and threshold secret sharing for distributed deployments. Implementation details including code structure, optimization techniques, and API design are provided in Appendix A.
+We provide a reference implementation as the \texttt{TrapdoorSet} type in the \texttt{trapdoor-maps} library~\cite{trapdoor-computing}, which backs the framework's empirical claims. A trapdoor set stores the element encodings $T_k(v) = H(k \| v)$ (keyed via HMAC-SHA256 over a per-set seed) and exposes:
+\begin{itemize}
+\item the literal-set operations of Section~\ref{sec:trapdoor-set}: union, intersection, difference, and symmetric difference on the encodings, and membership by encoding equality returning a plaintext boolean;
+\item a seed-derived compatibility tag, so that operations between sets encoded under different seeds are rejected rather than silently producing nonsense;
+\item the collision-bounded false-positive rate $|S|\,2^{-8b}$ for $b$-byte encodings, with no false negatives.
+\end{itemize}
+Deterministic ($K = 1$) encoding is exactly what makes the untrusted-side equality test possible; the same library realizes the opaque ($K > 1$) regime separately, behind a trusted decoder. The implementation carries unit, property-based, and integration tests, including an end-to-end private-set-intersection example in which an untrusted party returns an opaque intersection that the holder of the seed then decodes.
 
 \section{Evaluation}
 \label{sec:evaluation}
 
-\subsection{Experimental Setup}
+\subsection{Complexity Analysis}
 
-We evaluate HBTS on:
-\begin{itemize}
-\item Intel Core i9-12900K (16 cores, 24 threads)
-\item 64GB DDR5 RAM
-\item Ubuntu 22.04, GCC 12.2
-\item Compiled with -O3 -march=native
-\end{itemize}
-
-\subsection{Performance Benchmarks}
+The asymptotic complexity of the trapdoor set operations is determined by the underlying hash computation and set operations:
 
 \begin{table}[h]
 \centering
-\caption{Projected Operation Latency (microseconds)$^\dagger$}
-\label{tab:performance}
-\begin{tabular}{lrr}
+\caption{Operation Complexity}
+\label{tab:complexity}
+\begin{tabular}{lcc}
 \toprule
-Operation & Mean & Std Dev \\
+Operation & Time & Space \\
 \midrule
-Trapdoor creation & 0.42 & 0.03 \\
-Set insertion (1K elements) & 420 & 12 \\
-Set membership test & 0.45 & 0.02 \\
-Set intersection (1K each) & 892 & 28 \\
-Set union (1K each) & 856 & 24 \\
-Cardinality estimation & 1.2 & 0.1 \\
-Jaccard similarity & 2.1 & 0.2 \\
+Trapdoor creation & $O(1)$ & $O(n)$ bits \\
+Set membership test & $O(1)$ expected & $O(1)$ \\
+Set intersection ($k_1, k_2$) & $O(\min(k_1, k_2))$ & $O(\min(k_1, k_2))$ \\
+Set union ($k_1, k_2$) & $O(k_1 + k_2)$ & $O(k_1 + k_2)$ \\
 \bottomrule
 \end{tabular}
-\vspace{0.5em}
-
-{\footnotesize $^\dagger$Based on algorithm complexity analysis; formal benchmark validation in progress.}
 \end{table}
 
-HBTS achieves microsecond-scale performance for common operations, making it suitable for real-time applications.
-
-\subsection{Scalability Analysis}
-
-\begin{figure}[h]
-\centering
-\begin{lstlisting}[language={},basicstyle=\scriptsize\ttfamily,frame=none]
-Throughput (ops/sec) vs Set Size
-10^7 |       *
-     |     *
-10^6 |   *
-     | *
-10^5 |*_____________
-     10^2  10^4  10^6
-        Set Size
-\end{lstlisting}
-\caption{Throughput scaling with set size}
-\label{fig:scalability}
-\end{figure}
-
-Throughput remains constant for small sets and decreases logarithmically for large sets due to cache effects.
+All operations are dominated by hash computation cost: each reduces to a small number of cryptographic hash evaluations and ordinary set operations, with no homomorphic evaluation and no interaction. This is the structural source of the efficiency advantage over fully homomorphic encryption and secure multi-party computation; we do not report wall-clock benchmarks here.
 
 \subsection{Security Evaluation}
 
-We validate security properties through:
-
-\textbf{Collision Testing}: No collisions found in $2^{40}$ random inputs with 256-bit hashes, consistent with expected collision probability of $2^{-256}$.
+The security of the trapdoor set rests on the collision resistance and preimage resistance of the underlying hash function. For SHA-256, the expected collision probability is $2^{-256}$ per pair, providing a negligible false positive rate for practical set sizes.
 
 \subsection{Limitations and Attack Vectors}
 
-HBTS provides practical privacy but has important limitations that users must understand:
+The trapdoor set provides practical privacy but has important limitations that users must understand:
 
 \textbf{Dictionary Attacks}: For low-entropy input domains (e.g., phone numbers, SSNs, email addresses), an adversary with knowledge of the domain can precompute hashes for all possible values and match against observed trapdoors. Privacy degrades to $O(1/|D|)$ where $|D|$ is the domain size. \emph{Mitigation}: Use high-entropy inputs, apply key stretching (e.g., Argon2), or combine with additional randomization.
 
@@ -713,8 +648,8 @@ HBTS provides practical privacy but has important limitations that users must un
 
 \textbf{Quantum Vulnerability}: Grover's algorithm reduces effective hash security from $n$ bits to $n/2$ bits. For quantum resistance, use 512-bit hashes to maintain 256-bit security.
 
-\begin{remark}[When HBTS is Appropriate]
-HBTS is suitable when: (1) input domains have high entropy, (2) dictionary attacks are infeasible, (3) frequency patterns are acceptable leakage, or (4) approximate plausible deniability suffices. For stronger guarantees, consider FHE or MPC despite their performance costs.
+\begin{remark}[When the Trapdoor Set Is Appropriate]
+The trapdoor set is suitable when: (1) input domains have high entropy, (2) dictionary attacks are infeasible, (3) frequency patterns are acceptable leakage, or (4) approximate plausible deniability suffices. For stronger guarantees, consider FHE or MPC despite their performance costs.
 \end{remark}
 
 \subsection{Comparison with Alternatives}
@@ -727,7 +662,7 @@ HBTS is suitable when: (1) input domains have high entropy, (2) dictionary attac
 \toprule
 System & Privacy Model & Dictionary Resistant & Performance & Accuracy \\
 \midrule
-HBTS & Preimage & No$^*$ & $\mu$s & Approximate \\
+Trapdoor set & Preimage & No$^*$ & hashing & Approximate \\
 FHE & Semantic & Yes & s & Exact \\
 MPC & Simulation & Yes & ms & Exact \\
 Bloom Filters & None & N/A & $\mu$s & Approximate \\
@@ -738,14 +673,14 @@ Bloom Filters & None & N/A & $\mu$s & Approximate \\
 {\footnotesize $^*$Vulnerable when input domain has low entropy}
 \vspace{0.5em}
 
-HBTS occupies a practical niche: it provides preimage-based privacy with microsecond performance, suitable for high-entropy domains where dictionary attacks are infeasible.
+The trapdoor set occupies a practical niche: preimage-based non-recovery with equality-channel leakage, at the cost of hashing and set operations only, suitable for high-entropy domains where dictionary attacks are infeasible.
 
 \section{Applications}
 \label{sec:applications}
 
 \subsection{Private Set Intersection}
 
-HBTS enables efficient PSI without revealing non-matching elements. Using hash-table based intersection, HBTS achieves $O(n)$ complexity with $O(n)$ space, matching the best non-private approaches. The key advantage is that operations occur entirely in the hash domain---the false positive rate for membership is bounded by hash collision probability, while the underlying values remain computationally hidden.
+The trapdoor set enables efficient PSI without revealing non-matching elements. Using hash-table based intersection, the trapdoor set achieves $O(n)$ complexity with $O(n)$ space, matching the best non-private approaches. The key advantage is that operations occur entirely in the hash domain---the false positive rate for membership is bounded by hash collision probability, while the underlying values remain computationally hidden.
 
 \subsection{Secure Deduplication}
 
@@ -768,7 +703,7 @@ Cloud storage providers can identify duplicate files without accessing content:
 
 \subsection{Privacy-Preserving Analytics}
 
-HBTS supports various analytical operations on hash-transformed data:
+The trapdoor set supports various analytical operations on hash-transformed data:
 
 \textbf{Histogram Generation}: Count occurrences without revealing underlying values, useful for distribution analysis while preserving privacy.
 
@@ -776,9 +711,6 @@ HBTS supports various analytical operations on hash-transformed data:
 
 \textbf{Similarity Metrics}: Compute Jaccard similarity and other set-based metrics on private sets with explicit error quantification.
 
-\subsection{Federated Learning}
-
-HBTS supports secure aggregation in federated learning by allowing participants to submit hash-transformed model updates. The server aggregates these trapdoor-preserving updates using symmetric difference operations, revealing only the final aggregate while preserving individual update privacy. This approach is particularly effective when combined with differential privacy for additional statistical guarantees.
 
 \section{Related Work}
 \label{sec:related}
@@ -786,40 +718,40 @@ HBTS supports secure aggregation in federated learning by allowing participants 
 \subsection{Homomorphic Encryption}
 
 Fully homomorphic encryption (FHE) enables arbitrary computation on encrypted data. Since Gentry's breakthrough~\cite{gentry2009fully}, significant progress has been made in practical FHE systems. TFHE~\cite{chillotti2020tfhe} and CKKS~\cite{cheon2017homomorphic} achieve sub-second bootstrapping, % FIXED (BA-1): Brakerski year corrected from 2022 to 2012.
-while Brakerski's FHE without modulus switching~\cite{brakerski2012fully} simplifies implementation. However, FHE still incurs 1000-10000× overhead for general computation. Partially homomorphic schemes like Paillier~\cite{paillier1999public} offer better performance but support only specific operations. HBTS provides a complementary approach, achieving microsecond performance by accepting approximate results rather than exact homomorphic computation.
+while Brakerski's FHE without modulus switching~\cite{brakerski2012fully} simplifies implementation. Partially homomorphic schemes like Paillier~\cite{paillier1999public} offer better performance but support only specific operations. The trapdoor set provides a complementary approach, trading exact homomorphic computation for set operations at hashing speed.
 
 \subsection{Secure Multi-Party Computation}
 
-MPC protocols enable joint computation without revealing inputs. Classical protocols~\cite{yao1982protocols, goldreich1987play} laid theoretical foundations, while modern frameworks have made MPC practical. MP-SPDZ~\cite{keller2020mp} provides a comprehensive toolkit supporting multiple protocols, while ABY3~\cite{mohassel2018aby3} achieves efficient three-party computation. Recent advances in silent OT~\cite{boyle2022cheaper} and function secret sharing~\cite{boyle2021function} have reduced communication complexity. However, MPC still requires multiple rounds of interaction and coordination between parties. HBTS operates non-interactively using only hash transformations, trading exact computation for practical single-party performance.
+MPC protocols enable joint computation without revealing inputs. Classical protocols~\cite{yao1982protocols, goldreich1987play} laid theoretical foundations, while modern frameworks have made MPC practical. MP-SPDZ~\cite{keller2020mp} provides a comprehensive toolkit supporting multiple protocols, while ABY3~\cite{mohassel2018aby3} achieves efficient three-party computation. Recent advances in function secret sharing~\cite{boyle2021function} have reduced communication complexity. However, MPC still requires multiple rounds of interaction and coordination between parties. The trapdoor set operates non-interactively using only hash transformations, trading exact computation for practical single-party performance.
 
 \subsection{Private Set Intersection}
 
 PSI protocols have evolved significantly since early work~\cite{meadows1986more, freedman2004efficient}. Modern protocols achieve remarkable efficiency: OPRF-based PSI~\cite{raghuraman2022blazing} handles billion-element sets, while circuit-PSI~\cite{chandran2022circuit} enables arbitrary computations on intersection results. % FIXED (BA-1): chen2022blazing was a duplicate of raghuraman2022blazing with fabricated
 % authors. Replaced with Chen et al. 2017 (actual unbalanced PSI work using HE).
-Unbalanced PSI~\cite{chen2017unbalanced} optimizes for asymmetric set sizes common in practice. Recent work on PSI from pseudorandom correlation generators~\cite{schoppmann2023psi} achieves optimal communication. HBTS provides a simpler alternative where approximate results are acceptable, requiring only hash computation without cryptographic protocols.
+Unbalanced PSI~\cite{chen2017unbalanced} optimizes for asymmetric set sizes common in practice. The trapdoor set provides a simpler alternative where approximate results are acceptable, requiring only hash computation without cryptographic protocols.
 
 \subsection{Approximate Data Structures}
 
 Probabilistic data structures trade accuracy for efficiency. Bloom filters~\cite{bloom1970space} pioneered this approach for membership testing. Cuckoo filters~\cite{fan2014cuckoo} improve on Bloom filters by supporting deletions. % FIXED (BA-1): ting2020count had fabricated arXiv ID (2005.14165 = GPT-3 paper).
 % Replaced with Ting's actual cardinality estimation work (KDD 2014).
-Count-Min sketches~\cite{cormode2005improved} and streamed cardinality estimation~\cite{ting2014streamed} enable frequency and cardinality estimation. Recent work includes learned Bloom filters~\cite{kraska2018case} using machine learning to optimize performance, and XOR filters~\cite{graf2020xor} achieving near-optimal space efficiency. HBTS builds upon these foundations, adding cryptographic privacy through hash transformations while maintaining the efficiency benefits of approximate operations.
+Count-Min sketches~\cite{cormode2005improved} and streamed cardinality estimation~\cite{ting2014streamed} enable frequency and cardinality estimation. Recent work includes learned Bloom filters~\cite{kraska2018case} using machine learning to optimize performance, and XOR filters~\cite{graf2020xor} achieving near-optimal space efficiency. The trapdoor set builds upon these foundations, adding cryptographic privacy through hash transformations while maintaining the efficiency benefits of approximate operations.
 
 \subsection{Differential Privacy}
 
 Differential privacy (DP)~\cite{dwork2006calibrating} provides statistical privacy guarantees through calibrated noise addition. The field has matured significantly with deployment at major tech companies~\cite{erlingsson2014rappor, apple2017differential}. % FIXED (BA-1): McSherry year corrected from 2021 to 2007; Bonawitz year corrected from 2021 to 2017.
-Recent advances include mechanism design via differential privacy~\cite{mcsherry2007exponential}, concentrated DP~\cite{bun2016concentrated} for tighter privacy accounting, and shuffle DP~\cite{erlingsson2019amplification} amplifying privacy through anonymization. Practical secure aggregation~\cite{bonawitz2017practical} enables federated learning at scale. HBTS provides complementary cryptographic privacy that can be composed with DP techniques, offering defense-in-depth for sensitive applications.
+Recent advances include mechanism design via differential privacy~\cite{mcsherry2007exponential}, concentrated DP~\cite{bun2016concentrated} for tighter privacy accounting, and shuffle DP~\cite{erlingsson2019amplification} amplifying privacy through anonymization. Practical secure aggregation~\cite{bonawitz2017practical} enables federated learning at scale. The trapdoor set provides complementary cryptographic privacy that can be composed with DP techniques, offering defense-in-depth for sensitive applications.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented Hash-Based Trapdoor Sets (HBTS), a practical framework for privacy-preserving set operations that combines cryptographic hash functions with probabilistic data structures. By explicitly managing error rates and embracing approximation, HBTS achieves microsecond-scale performance while providing privacy bounded by hash collision probabilities.
+We presented the trapdoor set, a value type for privacy-preserving set operations over deterministic one-way encodings. It supports a collision-bounded generalized Boolean algebra over opaque elements, computed by an untrusted party that never decodes; its cost is bounded by standard hashing and set operations, and its confidentiality is governed by the equality channel, tunable through the homophony parameter that connects it to the cipher-map framework~\cite{cipher-maps}.
 
 Our contributions include:
 \begin{itemize}
 \item A systematic framework for error propagation through composed set operations on hash-transformed data
 \item Integration of established probabilistic algorithms (Bloom filters, HyperLogLog) with cryptographic privacy guarantees
-\item Practical demonstrations achieving 1000-10000× speedup over homomorphic encryption approaches
-\item Validation through real-world applications in private set intersection, secure aggregation, and federated learning
+\item A reference Python implementation with operations reducible to standard hash computations
+\item A worked private-set-intersection example exercised by the reference test suite
 \end{itemize}
 
 Future directions include:
@@ -832,200 +764,18 @@ Future directions include:
 
 \subsection{Current Limitations}
 
-The current implementation provides core trapdoor and set operations. The following features are designed but not yet implemented:
+The current Python reference implementation provides core trapdoor and set operations with full error propagation. The following features are not yet implemented:
 
 \begin{itemize}
-\item \textbf{Cryptographic key derivation}: The current implementation uses simplified hashing; production deployment requires HKDF or Argon2 for proper key derivation
-\item \textbf{Differential privacy integration}: The Laplace mechanism is designed but not implemented
-\item \textbf{Threshold secret sharing}: Algorithm specified in the API, implementation pending
-\item \textbf{Formal verification}: Coq proofs are planned for future work
-\item \textbf{Constant-time primitives}: Required for side-channel resistance in adversarial environments
-\item \textbf{NIST-validated randomness}: Output distribution testing against NIST SP 800-22 not yet performed
+\item \textbf{Cryptographic key derivation}: The implementation uses direct SHA-256 concatenation ($H(k \| v)$); production deployment would benefit from HKDF or Argon2 for proper key derivation
+\item \textbf{Differential privacy integration}: Combining the trapdoor set with calibrated noise addition is a natural extension but not yet implemented
+\item \textbf{Constant-time primitives}: The Python implementation does not guarantee constant-time execution; side-channel resistance would require a lower-level language
+\item \textbf{Performance optimization}: The reference implementation prioritizes clarity over performance; a production implementation in C or Rust would benefit from SIMD hashing and memory pooling
 \end{itemize}
 
-\noindent Performance figures in this paper are based on algorithm complexity analysis and microbenchmark design; comprehensive benchmarking with validated measurements is ongoing.
-
-HBTS demonstrates that practical privacy-preserving computation is achievable when applications can accept approximate results with explicit error bounds. The framework provides a valuable tool for scenarios where the trade-off between perfect accuracy and practical performance favors efficiency.
+The trapdoor set demonstrates that practical privacy-preserving computation is achievable when applications can accept approximate results with explicit error bounds.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
-
-\appendix
-
-\section{Implementation Details}
-
-This appendix provides implementation details for the HBTS framework that were omitted from the main text for clarity.
-
-\subsection{Core Data Structures}
-
-\subsubsection{Hash-Trapdoor Value Implementation}
-
-The hash-trapdoor value class encapsulates the one-way transformation:
-
-\begin{lstlisting}[caption={Hash-trapdoor value implementation}]
-template <typename T, size_t N = 32>
-class hash_trapdoor {
-  hash_value<N> value_hash_;
-  size_t key_fingerprint_;
-public:
-  approximate_bool equals(
-    const hash_trapdoor& other) const {
-    bool same = (value_hash_ ==
-                 other.value_hash_);
-    double fpr = pow(2.0, -N*8);
-    return approximate_bool(
-      same, fpr, 0.0);
-  }
-};
-\end{lstlisting}
-
-\subsubsection{Approximate Value Implementation}
-
-\begin{lstlisting}[caption={Approximate value with error tracking}]
-template <typename T>
-class approximate {
-  T value_;
-  double false_positive_rate_;
-  double false_negative_rate_;
-public:
-  T value() const { return value_; }
-  double confidence() const {
-    return 1.0 - false_positive_rate_
-               - false_negative_rate_;
-  }
-
-  // Error propagation for AND operation
-  // FIXED: FPR for AND = product (both must be false positives),
-  //        FNR for AND = inclusion-exclusion (either can be false negative).
-  //        Previously used min(fpr1,fpr2) and b1+b2, which were wrong.
-  approximate operator&&(
-    const approximate& other) const {
-    return approximate(
-      value_ && other.value_,
-      false_positive_rate_ *
-          other.false_positive_rate_,
-      false_negative_rate_ +
-        other.false_negative_rate_ -
-        false_negative_rate_ *
-          other.false_negative_rate_);
-  }
-};
-\end{lstlisting}
-
-\subsection{Optimization Techniques}
-
-\subsubsection{SIMD Hash Computation}
-
-We use vector instructions for parallel hash computation:
-
-\begin{lstlisting}[caption={SIMD-accelerated hashing}]
-template <typename T>
-void batch_hash(const T* input,
-                hash_value* output,
-                size_t count) {
-  #pragma omp simd
-  for (size_t i = 0; i < count; ++i) {
-    output[i] = compute_hash(input[i]);
-  }
-}
-\end{lstlisting}
-
-\subsubsection{Memory Pool Allocation}
-
-\begin{lstlisting}[caption={Memory pool for temporary values}]
-template <typename T>
-class memory_pool {
-  std::vector<T> pool_;
-  std::stack<T*> available_;
-public:
-  T* allocate() {
-    if (available_.empty()) {
-      pool_.emplace_back();
-      return &pool_.back();
-    }
-    T* ptr = available_.top();
-    available_.pop();
-    return ptr;
-  }
-
-  void deallocate(T* ptr) {
-    available_.push(ptr);
-  }
-};
-\end{lstlisting}
-
-\subsection{Key Management Implementation}
-
-\begin{lstlisting}[caption={Key derivation and management}]
-class key_manager {
-  std::array<uint8_t, 32> master_key_;
-
-public:
-  // Derive context-specific keys
-  auto derive_key(string_view context) {
-    return hmac_sha256(master_key_,
-                       context);
-  }
-
-  // Periodic key rotation
-  void rotate_keys() {
-    auto new_key = generate_random_key();
-    secure_overwrite(master_key_);
-    master_key_ = new_key;
-  }
-
-  // Shamir's secret sharing
-  auto split_key(int threshold, int shares) {
-    return shamir_split(master_key_,
-                        threshold, shares);
-  }
-};
-\end{lstlisting}
-
-\subsection{C++20 Concepts}
-
-We use concepts for compile-time type checking:
-
-\begin{lstlisting}[caption={Type constraints using concepts}]
-template <typename T>
-concept Hashable = requires(T t) {
-  { std::hash<T>{}(t) } ->
-    std::convertible_to<size_t>;
-};
-
-template <typename T>
-concept TrapdoorSet = requires(T t) {
-  typename T::value_type;
-  { t.insert(std::declval<
-    typename T::value_type>()) };
-  { t.contains(std::declval<
-    typename T::value_type>()) } ->
-    std::convertible_to<approximate_bool>;
-};
-\end{lstlisting}
-
-\subsection{Parallel Execution}
-
-Using C++20 parallel algorithms:
-
-\begin{lstlisting}[caption={Parallel set operations}]
-template <TrapdoorSet S>
-auto parallel_union(const S& a, const S& b) {
-  S result;
-  std::for_each(
-    std::execution::par_unseq,
-    a.begin(), a.end(),
-    [&result](const auto& elem) {
-      result.insert(elem);
-    });
-  std::for_each(
-    std::execution::par_unseq,
-    b.begin(), b.end(),
-    [&result](const auto& elem) {
-      result.insert(elem);
-    });
-  return result;
-}
-\end{lstlisting}
 
 \end{document}

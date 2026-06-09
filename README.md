@@ -1,139 +1,49 @@
-# Cipher Trapdoor Sets (CTS)
+# Boolean Algebra over Trapdoor Sets
 
-A minimal Python library for privacy-preserving set operations using cryptographic trapdoor functions. Implements the core algorithms from the accompanying research paper.
+Source for the paper *Boolean Algebra over Trapdoor Sets: A Practical Framework
+for Privacy-Preserving Set Operations with Probabilistic Guarantees* (Alexander
+Towell), part of the trapdoor-computing series.
 
-## Key Insight
+This is a paper-only repository. The earlier standalone `cts` Python library was
+removed on 2026-06-04; the reference implementation now lives as the
+`TrapdoorSet` type in the shared `trapdoor-maps` library.
 
-**One-way hash transformations enable equality testing and set operations on encrypted data without revealing underlying values.**
+## Subject
 
-## Installation
+The paper characterizes the **trapdoor set**: a set whose elements are opaque,
+deterministic (K=1) trapdoors, supporting a collision-bounded generalized Boolean algebra (union,
+intersection, and difference exact up to hash collision; no false negatives; no
+complement) while
+answering membership as a plaintext `bool` by byte-equality.
 
-```bash
-pip install -e .
+The trapdoor set sits at the leaky-but-exact end of an opacity/exactness axis.
+It never decodes (recovers no plaintext); what it exposes is the **equality
+predicate** among ciphertexts, the deterministic-encryption and
+searchable-encryption leakage profile. The homophony parameter `K(x)` is the
+dial: `K=1` opens that channel and gives this collision-bounded algebra; `K>1` closes it and
+yields the opaque set-indicator (an `element -> Bool` trapdoor map). In exchange
+for the leak, set operations are exact rather than error-accruing.
 
-# With development dependencies
-pip install -e ".[dev]"
-```
+The manuscript is being reframed around this value-type framing; see `CLAUDE.md`
+for status and the reframe checklist.
 
-## Quick Start
+## Implementation
 
-```python
-from cts import TrapdoorFactory, BooleanSet
+The reference implementation is the `TrapdoorSet` type in `trapdoor-maps`
+(`~/github/trapdoor-computing/src/cipher-maps`, package `trapdoor_maps`), the
+library that backs the trapdoor-computing papers' empirical claims. Design spec:
+`~/github/trapdoor-computing/src/cipher-maps/docs/superpowers/specs/2026-06-04-trapdoor-set-design.md`.
 
-# Create a factory with a secret key
-factory = TrapdoorFactory()
+## Build
 
-# Create privacy-preserving sets from plaintext values
-alice_contacts = BooleanSet.from_values(["bob", "carol", "dave"], factory)
-bob_contacts = BooleanSet.from_values(["alice", "carol", "eve"], factory)
-
-# Set operations - work on encrypted data
-common = alice_contacts & bob_contacts  # Intersection
-all_contacts = alice_contacts | bob_contacts  # Union
-
-# Membership testing with explicit error bounds
-carol = factory.create("carol")
-result = alice_contacts.contains(carol)
-print(f"Contains carol: {result.value} (confidence: {result.confidence:.2%})")
-```
-
-## Core Concepts
-
-### Trapdoors
-One-way cryptographic transformations: `T_k(v) = H(k || v)`
-
-```python
-factory = TrapdoorFactory(key=b'secret')
-t1 = factory.create("alice")
-t2 = factory.create("alice")
-print(t1 == t2)  # True - same value, same key
-```
-
-### Bernoulli Booleans
-All operations return `BernoulliBoolean` with explicit error rates (α = FPR, β = FNR):
-
-```python
-result = set.contains(trapdoor)
-print(f"Value: {result.value}")
-print(f"False positive rate: {result.alpha}")
-print(f"Confidence: {result.confidence}")
-
-# Bayesian posterior given prior probability
-prior = 0.01  # rare event
-posterior = result.posterior(prior)
-```
-
-### Error Propagation
-Set operations compose error rates mathematically:
-
-| Operation | FPR (α) | FNR (β) |
-|-----------|---------|---------|
-| AND (∩)   | α₁·α₂   | β₁ + β₂ - β₁·β₂ |
-| OR (∪)    | α₁ + α₂ - α₁·α₂ | β₁·β₂ |
-| NOT       | β       | α (rates swap) |
-
-### Boolean Sets
-Full Boolean algebra on trapdoor sets:
-
-```python
-s1 | s2   # Union - FPR increases
-s1 & s2   # Intersection - FPR decreases
-s1 ^ s2   # Symmetric difference
-s1 - s2   # Difference
-```
-
-## API Reference
-
-### `HashValue`
-Fixed-size byte array with bitwise operations (`^`, `&`, `|`, `~`).
-
-### `BernoulliBoolean`
-A boolean with explicit error rates (second-order Bernoulli type):
-- `.value` - the observed result
-- `.alpha` - false positive rate
-- `.beta` - false negative rate
-- `.confidence` - probability of correctness (1 - α - β)
-- `.confusion_matrix` - 2×2 transition matrix [[1-α, α], [β, 1-β]]
-- `.posterior(prior)` - Bayesian update P(latent=True | observation)
-
-### `TrapdoorFactory`
-Creates trapdoors from a secret key:
-- `TrapdoorFactory(key=None)` - generates random key if not provided
-- `.create(value)` - transform string/bytes to trapdoor
-- `.key_fingerprint` - public fingerprint for compatibility checking
-
-### `BooleanSet`
-Privacy-preserving set with Boolean operations:
-- `BooleanSet.from_values(values, factory)` - create from plaintexts
-- `.contains(trapdoor)` - membership test returning `BernoulliBoolean`
-- `|`, `&`, `^`, `-` - set operations with error propagation
-
-## Running Tests
+No Makefile. Build the PDF with:
 
 ```bash
-pytest tests/ -v
+cd paper
+pdflatex main_comprehensive.tex && bibtex main_comprehensive && \
+  pdflatex main_comprehensive.tex && pdflatex main_comprehensive.tex
 ```
-
-## Demo
-
-```bash
-python examples/demo.py
-```
-
-## Security Model
-
-- **Preimage-based privacy**: Cannot recover original values without the key
-- **Dictionary attacks**: Vulnerable if input domain has low entropy
-- **Pattern leakage**: Frequency and correlation patterns may leak information
-- **Suitable for**: High-entropy inputs where dictionary attacks are infeasible
-
-## Research Paper
-
-See `paper/main_comprehensive.tex` for the full theoretical treatment, including:
-- Formal security analysis
-- Error propagation proofs
-- Relationship to Bernoulli types
 
 ## License
 
-MIT License
+MIT (see `LICENSE`).
